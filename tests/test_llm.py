@@ -135,9 +135,9 @@ class TestDeepSeekLLM:
             mock_client.return_value.__enter__.return_value = mock_instance
             llm.complete([{"role": "user", "content": "hi"}])
             call_url = mock_instance.post.call_args[0][0]
-            assert call_url == "https://api.deepseek.com/v1/chat/completions"
+            assert call_url == "https://api.deepseek.com/chat/completions"
             body = json.loads(mock_instance.post.call_args[1]["content"])
-            assert body["model"] == "deepseek-chat"
+            assert body["model"] == "deepseek-v4-pro"
 
     def test_custom_model(self) -> None:
         llm = DeepSeekLLM("sk-test", model="deepseek-reasoner")
@@ -169,7 +169,7 @@ class TestGLMLLM:
             call_url = mock_instance.post.call_args[0][0]
             assert call_url == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
             body = json.loads(mock_instance.post.call_args[1]["content"])
-            assert body["model"] == "glm-4-flash"
+            assert body["model"] == "glm-5.2"
 
     def test_custom_model(self) -> None:
         llm = GLMLLM("sk-test", model="glm-4-plus")

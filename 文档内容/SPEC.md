@@ -104,18 +104,22 @@ class MockLLM(LLMBackend):
         return response
 
 class OpenAICompatLLM(LLMBackend):
-    """OpenAI 兼容 API 后端（DeepSeek、GLM 等国产模型通用）"""
+    """OpenAI 兼容 API 后端（DeepSeek、GLM 等国产模型通用）
+    
+    base_url 为 API 基础地址，不包含 /chat/completions 后缀，
+    由实现类内部拼接。
+    """
     def __init__(self, api_key: str, base_url: str, model: str):
         ...
 
 class DeepSeekLLM(OpenAICompatLLM):
     """DeepSeek API 后端"""
-    def __init__(self, api_key: str, model: str = "deepseek-chat"):
-        super().__init__(api_key, "https://api.deepseek.com/v1", model)
+    def __init__(self, api_key: str, model: str = "deepseek-v4-pro"):
+        super().__init__(api_key, "https://api.deepseek.com", model)
 
 class GLMLLM(OpenAICompatLLM):
     """智谱 GLM API 后端"""
-    def __init__(self, api_key: str, model: str = "glm-4-flash"):
+    def __init__(self, api_key: str, model: str = "glm-5.2"):
         super().__init__(api_key, "https://open.bigmodel.cn/api/paas/v4", model)
 
 class ClaudeLLM(LLMBackend):
@@ -338,7 +342,7 @@ FailureCategory 枚举：
 
 ```
 输入：ClassifiedFailure 列表
-输出：CorrectionStrategy
+输出：str  # 注入 LLM 上下文的结构化反馈文本
 
 策略映射：
   SYNTAX_ERROR   → 返回语法错误位置和错误信息，指示 LLM 修正语法
@@ -360,6 +364,7 @@ FailureCategory 枚举：
   - by_category: dict[FailureCategory, int]
   - top_issues: list[ClassifiedFailure]  # 前 5 个最高优先级问题
   - context_for_llm: str  # 注入 LLM 上下文的格式化文本
+  - round_number: int     # 当前轮次
 ```
 
 **F7: 多轮修正循环**
@@ -428,8 +433,8 @@ class SessionMemory:
 ```yaml
 llm:
   provider: deepseek        # deepseek | glm | claude
-  model: deepseek-chat      # 模型名，可按 provider 选默认值
-  api_base: https://api.deepseek.com/v1  # API 端点（仅 OpenAI 兼容格式需要）
+  model: deepseek-v4-pro    # 模型名，可按 provider 选默认值
+  api_base: https://api.deepseek.com  # API 端点（仅 OpenAI 兼容格式需要）
   max_tokens: 4096
   temperature: 0.1
 

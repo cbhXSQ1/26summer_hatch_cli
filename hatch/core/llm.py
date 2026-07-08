@@ -60,14 +60,14 @@ class OpenAICompatLLM(LLMBackend):
 class DeepSeekLLM(OpenAICompatLLM):
     """DeepSeek API 后端"""
 
-    def __init__(self, api_key: str, model: str = "deepseek-chat") -> None:
-        super().__init__(api_key, "https://api.deepseek.com/v1", model)
+    def __init__(self, api_key: str, model: str = "deepseek-v4-pro") -> None:
+        super().__init__(api_key, "https://api.deepseek.com", model)
 
 
 class GLMLLM(OpenAICompatLLM):
     """智谱 GLM API 后端"""
 
-    def __init__(self, api_key: str, model: str = "glm-4-flash") -> None:
+    def __init__(self, api_key: str, model: str = "glm-5.2") -> None:
         super().__init__(api_key, "https://open.bigmodel.cn/api/paas/v4", model)
 
 

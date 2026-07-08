@@ -3,8 +3,8 @@
 
 llm:
   provider: deepseek        # deepseek | glm | claude
-  model: deepseek-chat      # 模型名，可按 provider 选默认值
-  api_base: https://api.deepseek.com/v1  # API 端点（仅 OpenAI 兼容格式需要）
+  model: deepseek-v4-pro    # 模型名，可按 provider 选默认值
+  api_base: https://api.deepseek.com  # API 端点（仅 OpenAI 兼容格式需要）
   max_tokens: 4096
   temperature: 0.1
 
