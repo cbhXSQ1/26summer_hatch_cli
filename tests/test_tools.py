@@ -187,3 +187,17 @@ class TestTestRunner:
         result = runner.execute({"path": str(tmp_path)})
         assert result.success is False
         assert "failed" in result.output
+
+
+class TestLinter:
+    """Linter"""
+
+    def test_runs_flake8(self, tmp_path) -> None:
+        from hatch.tools.linter import Linter
+
+        py_file = tmp_path / "sample.py"
+        py_file.write_text("x = 1\n\n\n", encoding="utf-8")
+        linter = Linter()
+        result = linter.execute({"path": str(tmp_path)})
+        assert isinstance(result.output, str)
+        assert result.exit_code is not None
