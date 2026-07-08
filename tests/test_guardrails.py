@@ -135,3 +135,28 @@ class TestGuardrailChain:
         action = Action(tool_name="shell_executor", parameters={"command": "rm -rf /"})
         result = chain.check(action)
         assert result.allowed is True
+
+
+class TestHITLHandler:
+    """HITLHandler"""
+
+    def test_approve_with_y(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        handler = HITLHandler(input_func=lambda _: "y")
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is True
+
+    def test_deny_with_n(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        handler = HITLHandler(input_func=lambda _: "n")
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is False
+
+    def test_deny_on_unexpected_input(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        handler = HITLHandler(input_func=lambda _: "maybe")
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is False
