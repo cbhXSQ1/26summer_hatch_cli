@@ -163,3 +163,27 @@ class TestShellExecutor:
         result = exe.execute({"command": "python -c \"exit(1)\""})
         assert result.success is False
         assert result.exit_code == 1
+
+
+class TestTestRunner:
+    """TestRunner"""
+
+    def test_runs_pytest_on_file(self, tmp_path) -> None:
+        from hatch.tools.test_runner import TestRunner
+
+        test_file = tmp_path / "test_sample.py"
+        test_file.write_text("def test_pass():\n    assert True\n", encoding="utf-8")
+        runner = TestRunner()
+        result = runner.execute({"path": str(tmp_path)})
+        assert result.success is True
+        assert "passed" in result.output
+
+    def test_detects_failing_test(self, tmp_path) -> None:
+        from hatch.tools.test_runner import TestRunner
+
+        test_file = tmp_path / "test_fail.py"
+        test_file.write_text("def test_fail():\n    assert False\n", encoding="utf-8")
+        runner = TestRunner()
+        result = runner.execute({"path": str(tmp_path)})
+        assert result.success is False
+        assert "failed" in result.output
