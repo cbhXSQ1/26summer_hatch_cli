@@ -1,0 +1,1 @@
+# Hatch — A Coding Agent Harness for Python Development

@@ -1,0 +1,1 @@
+# Security module: Credential management (keyring + .env fallback)

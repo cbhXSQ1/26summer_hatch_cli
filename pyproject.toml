@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hatch-agent"
+version = "0.1.0"
+description = "Hatch — A Coding Agent Harness for Python development"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Hatch Team"}
+]
+keywords = ["coding-agent", "harness", "feedback-loop", "ai4se"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "httpx>=0.27",
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "keyring>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+    "build>=1.0",
+]
+
+[project.scripts]
+hatch = "hatch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hatch*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "demo_*.py"]
+filterwarnings = [
+    "ignore:cannot collect test class.*because it has a __init__ constructor",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_configs = true

@@ -1,0 +1,48 @@
+# GitLab CI/CD Pipeline for Hatch
+# See: https://docs.gitlab.com/ee/ci/
+
+stages:
+  - test
+  - build
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip/
+    - venv/
+
+before_script:
+  - python --version
+  - pip install --upgrade pip
+  - pip install -e ".[dev]"
+
+# Job: Unit Tests
+unit-test:
+  stage: test
+  script:
+    - pytest -v --tb=short
+  only:
+    - main
+    - merge_requests
+  tags:
+    - python
+
+# Job: Build Wheel
+build:
+  stage: build
+  script:
+    - pip install build
+    - python -m build
+    - pip install dist/*.whl
+    - hatch --version
+  artifacts:
+    paths:
+      - dist/*.whl
+    expire_in: 30 days
+  only:
+    - main
+    - merge_requests
+  tags:
+    - python

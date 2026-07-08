@@ -1,0 +1,42 @@
+# Hatch Configuration File
+# See: https://github.com/hatch-agent/hatch#configuration
+
+llm:
+  provider: deepseek        # deepseek | glm | claude
+  model: deepseek-chat      # 模型名，可按 provider 选默认值
+  api_base: https://api.deepseek.com/v1  # API 端点（仅 OpenAI 兼容格式需要）
+  max_tokens: 4096
+  temperature: 0.1
+
+loop:
+  max_rounds: 3
+  max_total_tokens: 100000
+
+tools:
+  enabled:
+    - file_reader
+    - file_writer
+    - shell_executor
+    - test_runner
+    - linter
+    - type_checker
+  shell_timeout: 30
+  test_timeout: 120
+
+guardrails:
+  require_approval_for:
+    - git_push_force
+    - pip_uninstall
+    - network_requests
+  blocked_commands:
+    - "rm -rf /"
+    - "dd if="
+
+feedback:
+  max_rounds: 3          # 最大修正轮次
+  loop_detection: true    # 死循环检测
+  auto_apply_style: false # 自动应用风格修复
+
+memory:
+  max_entries: 100
+  persist_path: ~/.hatch/memory.json
