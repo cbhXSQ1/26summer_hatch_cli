@@ -201,3 +201,17 @@ class TestLinter:
         result = linter.execute({"path": str(tmp_path)})
         assert isinstance(result.output, str)
         assert result.exit_code is not None
+
+
+class TestTypeChecker:
+    """TypeChecker"""
+
+    def test_runs_mypy(self, tmp_path) -> None:
+        from hatch.tools.type_checker import TypeChecker
+
+        py_file = tmp_path / "sample.py"
+        py_file.write_text("def add(a: int, b: int) -> int:\n    return a + b\n", encoding="utf-8")
+        checker = TypeChecker()
+        result = checker.execute({"path": str(tmp_path)})
+        assert isinstance(result.output, str)
+        assert result.exit_code is not None
