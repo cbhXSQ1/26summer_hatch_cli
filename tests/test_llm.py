@@ -1,7 +1,17 @@
-"""T1.2: LLM 抽象层 + MockLLM 测试"""
+"""T1.2 + T1.3: LLM 抽象层、MockLLM、LLM 适配器 测试"""
+
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
-from hatch.core.llm import LLMBackend, MockLLM
+from hatch.core.llm import (
+    LLMBackend,
+    MockLLM,
+    OpenAICompatLLM,
+    DeepSeekLLM,
+    GLMLLM,
+    ClaudeLLM,
+)
 
 
 class TestLLMBackend:
@@ -66,3 +76,153 @@ class TestMockLLM:
         mock2 = MockLLM(["b"])
         assert mock1.complete([]) == "a"
         assert mock2.complete([]) == "b"
+
+
+class TestOpenAICompatLLM:
+    """OpenAICompatLLM 基类"""
+
+    def test_is_subclass_of_llm_backend(self) -> None:
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        assert isinstance(llm, LLMBackend)
+
+    def test_constructs_correct_request(self) -> None:
+        messages = [{"role": "user", "content": "hello"}]
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "world"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+
+            result = llm.complete(messages)
+
+            mock_instance.post.assert_called_once()
+            call_args = mock_instance.post.call_args
+            assert call_args[0][0] == "https://api.example.com/v1/chat/completions"
+            assert call_args[1]["headers"]["Authorization"] == "Bearer sk-test"
+            body = json.loads(call_args[1]["content"])
+            assert body["model"] == "test-model"
+            assert body["messages"] == messages
+            assert result == "world"
+
+    def test_uses_custom_model(self) -> None:
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "custom-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "ok"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "custom-model"
+
+
+class TestDeepSeekLLM:
+    """DeepSeekLLM"""
+
+    def test_defaults(self) -> None:
+        llm = DeepSeekLLM("sk-test")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "ok"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            call_url = mock_instance.post.call_args[0][0]
+            assert call_url == "https://api.deepseek.com/v1/chat/completions"
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "deepseek-chat"
+
+    def test_custom_model(self) -> None:
+        llm = DeepSeekLLM("sk-test", model="deepseek-reasoner")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "ok"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "deepseek-reasoner"
+
+
+class TestGLMLLM:
+    """GLMLLM"""
+
+    def test_defaults(self) -> None:
+        llm = GLMLLM("sk-test")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "ok"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            call_url = mock_instance.post.call_args[0][0]
+            assert call_url == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "glm-4-flash"
+
+    def test_custom_model(self) -> None:
+        llm = GLMLLM("sk-test", model="glm-4-plus")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {"content": "ok"}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "glm-4-plus"
+
+
+class TestClaudeLLM:
+    """ClaudeLLM"""
+
+    def test_is_subclass_of_llm_backend(self) -> None:
+        llm = ClaudeLLM("sk-ant-test")
+        assert isinstance(llm, LLMBackend)
+
+    def test_defaults(self) -> None:
+        llm = ClaudeLLM("sk-ant-test")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"content": [{"text": "hello from claude"}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+
+            result = llm.complete([{"role": "user", "content": "hi"}])
+
+            call_url = mock_instance.post.call_args[0][0]
+            assert call_url == "https://api.anthropic.com/v1/messages"
+            headers = mock_instance.post.call_args[1]["headers"]
+            assert headers["x-api-key"] == "sk-ant-test"
+            assert headers["anthropic-version"] == "2023-06-01"
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "claude-sonnet-4-20250514"
+            assert body["max_tokens"] == 4096
+            assert result == "hello from claude"
+
+    def test_custom_model(self) -> None:
+        llm = ClaudeLLM("sk-ant-test", model="claude-opus-4-20250514")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"content": [{"text": "ok"}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            llm.complete([{"role": "user", "content": "hi"}])
+            body = json.loads(mock_instance.post.call_args[1]["content"])
+            assert body["model"] == "claude-opus-4-20250514"
