@@ -91,3 +91,48 @@ class TestToolRegistry:
         result = registry.dispatch(action)
         assert result.success is False
         assert result.error == "intentional failure"
+
+
+class TestFileReader:
+    """FileReader"""
+
+    def test_reads_text_file_with_line_numbers(self, tmp_path) -> None:
+        from hatch.tools.file_reader import FileReader
+
+        f = tmp_path / "test.txt"
+        f.write_text("line one\nline two\n", encoding="utf-8")
+        reader = FileReader()
+        result = reader.execute({"path": str(f)})
+        assert result.success is True
+        assert "1: line one" in result.output
+        assert "2: line two" in result.output
+
+    def test_file_not_found(self, tmp_path) -> None:
+        from hatch.tools.file_reader import FileReader
+
+        reader = FileReader()
+        result = reader.execute({"path": str(tmp_path / "no.txt")})
+        assert result.success is False
+
+
+class TestFileWriter:
+    """FileWriter"""
+
+    def test_writes_content(self, tmp_path) -> None:
+        from hatch.tools.file_writer import FileWriter
+
+        f = tmp_path / "out.py"
+        writer = FileWriter()
+        result = writer.execute({"path": str(f), "content": "print('hi')"})
+        assert result.success is True
+        assert f.read_text(encoding="utf-8") == "print('hi')"
+
+    def test_creates_backup(self, tmp_path) -> None:
+        from hatch.tools.file_writer import FileWriter
+
+        f = tmp_path / "original.txt"
+        f.write_text("original", encoding="utf-8")
+        writer = FileWriter()
+        writer.execute({"path": str(f), "content": "modified"})
+        backups = list(tmp_path.glob(".hatch_backup/original.txt*"))
+        assert len(backups) >= 1
