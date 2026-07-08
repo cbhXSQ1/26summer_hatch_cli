@@ -136,3 +136,30 @@ class TestFileWriter:
         writer.execute({"path": str(f), "content": "modified"})
         backups = list(tmp_path.glob(".hatch_backup/original.txt*"))
         assert len(backups) >= 1
+
+
+class TestShellExecutor:
+    """ShellExecutor"""
+
+    def test_executes_simple_command(self) -> None:
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        result = exe.execute({"command": "echo hello"})
+        assert result.success is True
+        assert "hello" in result.output
+
+    def test_captures_stderr(self) -> None:
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        result = exe.execute({"command": "python -c \"import sys; sys.stderr.write('err')\""})
+        assert "err" in result.output or "err" in (result.error or "")
+
+    def test_nonzero_exit_code(self) -> None:
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        result = exe.execute({"command": "python -c \"exit(1)\""})
+        assert result.success is False
+        assert result.exit_code == 1
