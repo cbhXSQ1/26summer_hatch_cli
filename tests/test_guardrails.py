@@ -91,3 +91,47 @@ class TestPathTraversalRule:
         action = Action(tool_name="file_reader", parameters={"path": "C:\\Windows\\System32\\config"})
         result = rule.check(action)
         assert result.allowed is False
+
+
+class TestGuardrailChain:
+    """GuardrailChain"""
+
+    def test_block_overrides_approve(self) -> None:
+        from hatch.guardrails.chain import GuardrailChain
+        from hatch.guardrails.rules import DangerousCommandRule, ApprovalCommandRule
+
+        chain = GuardrailChain()
+        chain.add_rule(ApprovalCommandRule())
+        chain.add_rule(DangerousCommandRule())
+        action = Action(tool_name="shell_executor", parameters={"command": "rm -rf /"})
+        result = chain.check(action)
+        assert result.allowed is False
+        assert result.requires_approval is False
+
+    def test_approve_when_no_block(self) -> None:
+        from hatch.guardrails.chain import GuardrailChain
+        from hatch.guardrails.rules import ApprovalCommandRule
+
+        chain = GuardrailChain()
+        chain.add_rule(ApprovalCommandRule())
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        result = chain.check(action)
+        assert result.requires_approval is True
+
+    def test_allowed_when_no_rules_match(self) -> None:
+        from hatch.guardrails.chain import GuardrailChain
+        from hatch.guardrails.rules import DangerousCommandRule
+
+        chain = GuardrailChain()
+        chain.add_rule(DangerousCommandRule())
+        action = Action(tool_name="shell_executor", parameters={"command": "ls"})
+        result = chain.check(action)
+        assert result.allowed is True
+
+    def test_empty_chain_allows_everything(self) -> None:
+        from hatch.guardrails.chain import GuardrailChain
+
+        chain = GuardrailChain()
+        action = Action(tool_name="shell_executor", parameters={"command": "rm -rf /"})
+        result = chain.check(action)
+        assert result.allowed is True
