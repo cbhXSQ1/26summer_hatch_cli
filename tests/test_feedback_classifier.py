@@ -77,6 +77,27 @@ class TestFailureClassifier:
         assert failures[0].category == FailureCategory.SYNTAX_ERROR
         assert failures[1].category == FailureCategory.LOGIC_ERROR
 
+    def test_classifies_synthetic_errors(self) -> None:
+        test_result = TestResult(total=2, failed=2)
+        failures = FailureClassifier.classify(test_result, LintResult(), TypeCheckResult())
+        assert len(failures) == 2
+        for f in failures:
+            assert f.category == FailureCategory.RUNTIME_ERROR
+
+    def test_classifies_collection_error(self) -> None:
+        test_result = TestResult(
+            total=1, failed=1,
+            errors=[TestError(
+                test_name="test_collection",
+                error_type="CollectionError",
+                message="could not collect test",
+                file_path="test_x.py",
+            )],
+        )
+        failures = FailureClassifier.classify(test_result, LintResult(), TypeCheckResult())
+        assert len(failures) == 1
+        assert failures[0].category == FailureCategory.RUNTIME_ERROR
+
 
 class TestCorrectionStrategySelector:
     """CorrectionStrategySelector"""
@@ -127,6 +148,48 @@ class TestCorrectionStrategySelector:
         )
         text = CorrectionStrategySelector.select(cf)
         assert "E501" in text
+
+    def test_runtime_error_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.RUNTIME_ERROR,
+            failures=[TestError(
+                test_name="test_div", error_type="ZeroDivisionError",
+                message="division by zero", file_path="test_calc.py",
+            )],
+            priority=4,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "运行时错误" in text
+
+    def test_unknown_error_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.UNKNOWN,
+            failures=[TestError(
+                test_name="test_x", error_type="SomeError",
+                message="something went wrong", file_path="test_x.py",
+            )],
+            priority=6,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "未知" in text
+
+    def test_type_error_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.TYPE_ERROR,
+            failures=[TypeCheckError(
+                file_path="app.py", line=10, column=0,
+                severity="error", message="Incompatible types",
+            )],
+            priority=2,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "类型错误" in text
 
 
 class TestFeedbackAggregator:

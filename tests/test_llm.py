@@ -120,6 +120,44 @@ class TestOpenAICompatLLM:
             body = json.loads(mock_instance.post.call_args[1]["content"])
             assert body["model"] == "custom-model"
 
+    def test_handles_http_error(self) -> None:
+        import httpx
+
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 500
+            mock_instance.post.side_effect = httpx.HTTPStatusError(
+                "Server Error", request=MagicMock(), response=mock_response
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            with pytest.raises(httpx.HTTPStatusError):
+                llm.complete([{"role": "user", "content": "hi"}])
+
+    def test_handles_timeout(self) -> None:
+        import httpx
+
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.side_effect = httpx.TimeoutException("timeout")
+            mock_client.return_value.__enter__.return_value = mock_instance
+            with pytest.raises(httpx.TimeoutException):
+                llm.complete([{"role": "user", "content": "hi"}])
+
+    def test_handles_malformed_json(self) -> None:
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"choices": [{"message": {}}]},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            with pytest.raises(KeyError):
+                llm.complete([{"role": "user", "content": "hi"}])
+
 
 class TestDeepSeekLLM:
     """DeepSeekLLM"""
@@ -226,3 +264,30 @@ class TestClaudeLLM:
             llm.complete([{"role": "user", "content": "hi"}])
             body = json.loads(mock_instance.post.call_args[1]["content"])
             assert body["model"] == "claude-opus-4-20250514"
+
+    def test_handles_empty_content(self) -> None:
+        llm = ClaudeLLM("sk-ant-test")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_instance.post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"content": []},
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            with pytest.raises(IndexError):
+                llm.complete([{"role": "user", "content": "hi"}])
+
+    def test_handles_http_error(self) -> None:
+        import httpx
+
+        llm = ClaudeLLM("sk-ant-test")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 500
+            mock_instance.post.side_effect = httpx.HTTPStatusError(
+                "Server Error", request=MagicMock(), response=mock_response
+            )
+            mock_client.return_value.__enter__.return_value = mock_instance
+            with pytest.raises(httpx.HTTPStatusError):
+                llm.complete([{"role": "user", "content": "hi"}])

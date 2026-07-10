@@ -37,6 +37,24 @@ class TestDangerousCommandRule:
         result = rule.check(action)
         assert result.allowed is True
 
+    def test_blocks_fork_bomb(self) -> None:
+        rule = DangerousCommandRule()
+        action = Action(tool_name="shell_executor", parameters={"command": ":(){ :|:& };:"})
+        result = rule.check(action)
+        assert result.allowed is False
+
+    def test_blocks_mkfs(self) -> None:
+        rule = DangerousCommandRule()
+        action = Action(tool_name="shell_executor", parameters={"command": "mkfs.ext4 /dev/sda1"})
+        result = rule.check(action)
+        assert result.allowed is False
+
+    def test_blocks_redirect_to_dev(self) -> None:
+        rule = DangerousCommandRule()
+        action = Action(tool_name="shell_executor", parameters={"command": "echo > /dev/sda"})
+        result = rule.check(action)
+        assert result.allowed is False
+
 
 class TestApprovalCommandRule:
     """需审批命令规则"""
@@ -59,6 +77,20 @@ class TestApprovalCommandRule:
         action = Action(tool_name="shell_executor", parameters={"command": "pip install requests"})
         result = rule.check(action)
         assert result.allowed is True
+
+    def test_requires_approval_for_chmod_777(self) -> None:
+        rule = ApprovalCommandRule()
+        action = Action(tool_name="shell_executor", parameters={"command": "chmod 777 /tmp/script.sh"})
+        result = rule.check(action)
+        assert result.requires_approval is True
+        assert result.allowed is False
+
+    def test_requires_approval_for_rm_rf_non_root(self) -> None:
+        rule = ApprovalCommandRule()
+        action = Action(tool_name="shell_executor", parameters={"command": "rm -rf cache"})
+        result = rule.check(action)
+        assert result.requires_approval is True
+        assert result.allowed is False
 
 
 class TestNetworkRequestRule:
@@ -91,6 +123,23 @@ class TestPathTraversalRule:
         action = Action(tool_name="file_reader", parameters={"path": "C:\\Windows\\System32\\config"})
         result = rule.check(action)
         assert result.allowed is False
+
+    def test_blocks_system_roots(self) -> None:
+        rule = PathTraversalRule()
+        paths = ["/boot", "/proc", "/sys", "/usr", "/var"]
+        for p in paths:
+            action = Action(tool_name="file_reader", parameters={"path": p})
+            result = rule.check(action)
+            assert result.allowed is False, f"Expected {p} to be blocked"
+
+    def test_handles_os_error_path(self) -> None:
+        from unittest.mock import patch
+
+        rule = PathTraversalRule()
+        action = Action(tool_name="file_reader", parameters={"path": "/some/path"})
+        with patch("pathlib.Path.resolve", side_effect=OSError):
+            result = rule.check(action)
+        assert result.allowed is True
 
 
 class TestGuardrailChain:
@@ -137,6 +186,26 @@ class TestGuardrailChain:
         assert result.allowed is True
 
 
+class TestGuardrailRuleABC:
+    """GuardrailRule 抽象基类"""
+
+    def test_cannot_instantiate_abstract(self) -> None:
+        from hatch.guardrails.rules import GuardrailRule
+        import pytest
+
+        with pytest.raises(TypeError):
+            GuardrailRule()  # type: ignore[abstract]
+
+    def test_subclass_must_implement_check(self) -> None:
+        from hatch.guardrails.rules import GuardrailRule
+        import pytest
+
+        with pytest.raises(TypeError):
+            class Incomplete(GuardrailRule):
+                pass
+            Incomplete()  # type: ignore[abstract]
+
+
 class TestHITLHandler:
     """HITLHandler"""
 
@@ -160,3 +229,30 @@ class TestHITLHandler:
         handler = HITLHandler(input_func=lambda _: "maybe")
         action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
         assert handler.request_approval(action) is False
+
+    def test_handles_eof_error(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        def raise_eof(_: str) -> str:
+            raise EOFError()
+
+        handler = HITLHandler(input_func=raise_eof)
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is False
+
+    def test_handles_keyboard_interrupt(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        def raise_kb(_: str) -> str:
+            raise KeyboardInterrupt()
+
+        handler = HITLHandler(input_func=raise_kb)
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is False
+
+    def test_approve_with_yes(self) -> None:
+        from hatch.guardrails.hitl import HITLHandler
+
+        handler = HITLHandler(input_func=lambda _: "yes")
+        action = Action(tool_name="shell_executor", parameters={"command": "git push --force"})
+        assert handler.request_approval(action) is True

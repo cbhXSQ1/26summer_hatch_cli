@@ -45,6 +45,42 @@ tests/test_x.py::test_c PASSED
         assert result.passed == 3
         assert result.failed == 0
 
+    def test_parses_collection_errors(self) -> None:
+        text = """============================= test session starts =============================
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_x.py _________________
+E   ImportError: cannot import name 'foo'
+1 error"""
+        result = TestResultParser.parse(text)
+        assert result.failed == 1
+        assert len(result.errors) == 1
+        assert result.errors[0].error_type == "CollectionError"
+
+    def test_parses_summary_line(self) -> None:
+        text = """3 passed, 2 failed"""
+        result = TestResultParser.parse(text)
+        assert result.passed == 3
+        assert result.failed == 2
+        assert result.total == 5
+
+    def test_extracts_expected_actual(self) -> None:
+        text = """================================== FAILURES ===================================
+_____________ test_calc ______________
+
+    def test_calc():
+>       assert 5 == 6
+E       assert 5 == 6
+
+test_calc.py:5: AssertionError
+1 failed"""
+        result = TestResultParser.parse(text)
+        assert result.failed == 1
+        assert len(result.errors) == 1
+        assert result.errors[0].expected == "6"
+        assert result.errors[0].actual == "5"
+
 
 class TestLintResultParser:
     """LintResultParser"""

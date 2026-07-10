@@ -1,6 +1,9 @@
 """T2.1: Tool 基类 + ToolRegistry 测试"""
 
+import subprocess
 import pytest
+from unittest.mock import patch, MagicMock
+
 from hatch.core.models import Action, ToolResult
 from hatch.tools.base import Tool
 from hatch.tools.registry import ToolRegistry
@@ -92,6 +95,23 @@ class TestToolRegistry:
         assert result.success is False
         assert result.error == "intentional failure"
 
+    def test_dispatch_tool_raises_exception(self) -> None:
+        registry = ToolRegistry()
+
+        class ExplodingTool(Tool):
+            name = "bomb"
+            description = "goes boom"
+            parameters_schema = {}
+
+            def execute(self, params: dict) -> ToolResult:
+                raise RuntimeError("BOOM")
+
+        registry.register(ExplodingTool())
+        action = Action(tool_name="bomb", parameters={})
+        result = registry.dispatch(action)
+        assert result.success is False
+        assert "BOOM" in result.error
+
 
 class TestFileReader:
     """FileReader"""
@@ -113,6 +133,36 @@ class TestFileReader:
         reader = FileReader()
         result = reader.execute({"path": str(tmp_path / "no.txt")})
         assert result.success is False
+
+    def test_file_exceeds_size_limit(self, tmp_path) -> None:
+        from hatch.tools.file_reader import FileReader
+
+        f = tmp_path / "large.txt"
+        f.write_bytes(b"x" * 1_000_001)
+        reader = FileReader()
+        result = reader.execute({"path": str(f)})
+        assert result.success is False
+        assert "1MB" in result.error
+
+    def test_binary_file(self, tmp_path) -> None:
+        from hatch.tools.file_reader import FileReader
+
+        f = tmp_path / "data.bin"
+        f.write_bytes(b"\x80\x81\x82\xff\xfe")
+        reader = FileReader()
+        result = reader.execute({"path": str(f)})
+        assert result.success is False
+        assert "二进制" in result.error
+
+    def test_empty_file(self, tmp_path) -> None:
+        from hatch.tools.file_reader import FileReader
+
+        f = tmp_path / "empty.txt"
+        f.write_text("", encoding="utf-8")
+        reader = FileReader()
+        result = reader.execute({"path": str(f)})
+        assert result.success is True
+        assert result.output == ""
 
 
 class TestFileWriter:
@@ -136,6 +186,33 @@ class TestFileWriter:
         writer.execute({"path": str(f), "content": "modified"})
         backups = list(tmp_path.glob(".hatch_backup/original.txt*"))
         assert len(backups) >= 1
+
+    def test_blocks_system_directory(self) -> None:
+        from hatch.tools.file_writer import FileWriter
+
+        writer = FileWriter()
+        result = writer.execute({"path": "C:\\Windows\\test.txt", "content": "bad"})
+        assert result.success is False
+        assert "拒绝" in result.error or "系统" in result.error
+
+    def test_creates_new_file_no_backup(self, tmp_path) -> None:
+        from hatch.tools.file_writer import FileWriter
+
+        f = tmp_path / "new_file.txt"
+        writer = FileWriter()
+        result = writer.execute({"path": str(f), "content": "fresh"})
+        assert result.success is True
+        backups = list(tmp_path.glob(".hatch_backup/*"))
+        assert len(backups) == 0
+
+    def test_creates_parent_directories(self, tmp_path) -> None:
+        from hatch.tools.file_writer import FileWriter
+
+        f = tmp_path / "a" / "b" / "c" / "nested.txt"
+        writer = FileWriter()
+        result = writer.execute({"path": str(f), "content": "deep"})
+        assert result.success is True
+        assert f.read_text(encoding="utf-8") == "deep"
 
 
 class TestShellExecutor:
@@ -164,6 +241,25 @@ class TestShellExecutor:
         assert result.success is False
         assert result.exit_code == 1
 
+    def test_timeout(self) -> None:
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        result = exe.execute({"command": "python -c \"import time; time.sleep(10)\"", "timeout": 1})
+        assert result.success is False
+        assert "超时" in result.error or "timeout" in result.error.lower()
+
+    def test_custom_timeout(self) -> None:
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ok", stderr=""
+            )
+            exe.execute({"command": "echo hi", "timeout": 5})
+            assert mock_run.call_args[1]["timeout"] == 5
+
 
 class TestTestRunner:
     """TestRunner"""
@@ -188,6 +284,31 @@ class TestTestRunner:
         assert result.success is False
         assert "failed" in result.output
 
+    def test_timeout(self, tmp_path) -> None:
+        from hatch.tools.test_runner import TestRunner
+
+        test_file = tmp_path / "test_slow.py"
+        test_file.write_text(
+            "import time\n"
+            "def test_slow():\n"
+            "    time.sleep(10)\n"
+            "    assert True\n",
+            encoding="utf-8",
+        )
+        runner = TestRunner()
+        result = runner.execute({"path": str(tmp_path), "timeout": 1})
+        assert result.success is False
+        assert "超时" in result.error or "timeout" in result.error.lower()
+
+    def test_pytest_not_installed(self) -> None:
+        from hatch.tools.test_runner import TestRunner
+
+        runner = TestRunner()
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = runner.execute({"path": "."})
+        assert result.success is False
+        assert "pytest" in result.error.lower() and "未安装" in result.error
+
 
 class TestLinter:
     """Linter"""
@@ -202,6 +323,15 @@ class TestLinter:
         assert isinstance(result.output, str)
         assert result.exit_code is not None
 
+    def test_flake8_not_installed(self) -> None:
+        from hatch.tools.linter import Linter
+
+        linter = Linter()
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = linter.execute({"path": "."})
+        assert result.success is False
+        assert "flake8" in result.error.lower() and "未安装" in result.error
+
 
 class TestTypeChecker:
     """TypeChecker"""
@@ -215,3 +345,12 @@ class TestTypeChecker:
         result = checker.execute({"path": str(tmp_path)})
         assert isinstance(result.output, str)
         assert result.exit_code is not None
+
+    def test_mypy_not_installed(self) -> None:
+        from hatch.tools.type_checker import TypeChecker
+
+        checker = TypeChecker()
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = checker.execute({"path": "."})
+        assert result.success is False
+        assert "mypy" in result.error.lower() and "未安装" in result.error

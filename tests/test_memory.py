@@ -56,3 +56,36 @@ class TestSessionMemory:
         mem = SessionMemory(persist_path=str(path))
         mem.load()  # should not raise
         assert mem.get_all() == {}
+
+    def test_get_relevant_context_matching_query(self) -> None:
+        mem = SessionMemory()
+        mem.set("framework", "pytest")
+        mem.set("language", "python")
+        result = mem.get_relevant_context("pytest")
+        assert "framework: pytest" in result
+
+    def test_get_relevant_context_no_match(self) -> None:
+        mem = SessionMemory()
+        mem.set("key", "value")
+        result = mem.get_relevant_context("nonexistent")
+        assert result == ""
+
+    def test_save_with_empty_persist_path(self, tmp_path) -> None:
+        mem = SessionMemory(persist_path="")
+        mem.set("topic", "testing")
+        mem.save()
+
+    def test_load_with_empty_persist_path(self) -> None:
+        mem = SessionMemory(persist_path="")
+        mem.load()
+
+    def test_load_file_not_exists(self, tmp_path) -> None:
+        mem = SessionMemory(persist_path=str(tmp_path / "nonexistent.json"))
+        mem.load()
+        assert mem.get_all() == {}
+
+    def test_get_relevant_context_case_insensitive(self) -> None:
+        mem = SessionMemory()
+        mem.set("Task", "Python")
+        result = mem.get_relevant_context("python")
+        assert "Task: Python" in result

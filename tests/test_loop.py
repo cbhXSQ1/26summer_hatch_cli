@@ -111,3 +111,173 @@ class TestAgentLoop:
             config=Config(),
         )
         assert state.status == "stopped"
+
+    def test_loop_with_hitl_approval(self) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.shell_executor import ShellExecutor
+        from hatch.guardrails.chain import GuardrailChain
+        from hatch.guardrails.rules import ApprovalCommandRule
+        from hatch.guardrails.hitl import HITLHandler
+        from hatch.config.loader import Config
+
+        llm = MockLLM([
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "git push --force"}}]
+```""",
+        ])
+        registry = ToolRegistry()
+        registry.register(ShellExecutor())
+        chain = GuardrailChain()
+        chain.add_rule(ApprovalCommandRule())
+        hitl = HITLHandler(input_func=lambda _: "y")
+        state = AgentLoop().run(
+            task="push changes",
+            llm=llm,
+            registry=registry,
+            guardrail_chain=chain,
+            hitl=hitl,
+            config=Config(),
+        )
+        assert state.status != "stopped"
+
+    def test_loop_with_hitl_denial(self) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.shell_executor import ShellExecutor
+        from hatch.guardrails.chain import GuardrailChain
+        from hatch.guardrails.rules import ApprovalCommandRule
+        from hatch.guardrails.hitl import HITLHandler
+        from hatch.config.loader import Config
+
+        llm = MockLLM([
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "git push --force"}}]
+```""",
+        ])
+        registry = ToolRegistry()
+        registry.register(ShellExecutor())
+        chain = GuardrailChain()
+        chain.add_rule(ApprovalCommandRule())
+        hitl = HITLHandler(input_func=lambda _: "n")
+        state = AgentLoop().run(
+            task="push changes",
+            llm=llm,
+            registry=registry,
+            guardrail_chain=chain,
+            hitl=hitl,
+            config=Config(),
+        )
+        assert state.status == "stopped"
+
+    def test_loop_with_memory_context(self, tmp_path) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.file_reader import FileReader
+        from hatch.memory.session import SessionMemory
+        from hatch.config.loader import Config
+
+        test_file = tmp_path / "data.txt"
+        test_file.write_text("hello", encoding="utf-8")
+        file_path = str(test_file).replace("\\", "/")
+
+        llm = MockLLM([
+            f"""```json
+[{{"tool_name": "file_reader", "parameters": {{"path": "{file_path}"}}}}]
+```""",
+        ])
+        registry = ToolRegistry()
+        registry.register(FileReader())
+        memory = SessionMemory()
+        memory.set("framework", "pytest")
+        memory.set("language", "python")
+        state = AgentLoop().run(
+            task="read data.txt",
+            llm=llm,
+            registry=registry,
+            memory=memory,
+            config=Config(),
+        )
+        assert state.status == "success"
+
+    def test_loop_empty_actions(self) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.config.loader import Config
+
+        llm = MockLLM(["invalid response with no json"])
+        registry = ToolRegistry()
+        state = AgentLoop().run(
+            task="do something",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "failed"
+
+    def test_loop_multiple_actions_single_round(self, tmp_path) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.file_reader import FileReader
+        from hatch.config.loader import Config
+
+        file1 = tmp_path / "a.txt"
+        file1.write_text("content a", encoding="utf-8")
+        file2 = tmp_path / "b.txt"
+        file2.write_text("content b", encoding="utf-8")
+        p1 = str(file1).replace("\\", "/")
+        p2 = str(file2).replace("\\", "/")
+
+        llm = MockLLM([
+            f"""```json
+[{{"tool_name": "file_reader", "parameters": {{"path": "{p1}"}}}},
+ {{"tool_name": "file_reader", "parameters": {{"path": "{p2}"}}}}]
+```""",
+        ])
+        registry = ToolRegistry()
+        registry.register(FileReader())
+        state = AgentLoop().run(
+            task="read two files",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "success"
+        assert len(state.history) == 2
+
+    def test_loop_with_feedback_engine(self, tmp_path) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.file_reader import FileReader
+        from hatch.config.loader import Config, LoopConfig
+
+        test_file = tmp_path / "target.txt"
+        test_file.write_text("hello", encoding="utf-8")
+        ok_path = str(test_file).replace("\\", "/")
+        bad_path = str(tmp_path / "nonexistent.txt").replace("\\", "/")
+
+        llm = MockLLM([
+            f"""```json
+[{{"tool_name": "file_reader", "parameters": {{"path": "{bad_path}"}}}}]
+```""",
+            f"""```json
+[{{"tool_name": "file_reader", "parameters": {{"path": "{ok_path}"}}}}]
+```""",
+        ])
+        registry = ToolRegistry()
+        registry.register(FileReader())
+        config = Config(loop=LoopConfig(max_rounds=2))
+        state = AgentLoop().run(
+            task="read the file",
+            llm=llm,
+            registry=registry,
+            config=config,
+        )
+        assert state.status == "success"
+        assert state.round == 2
