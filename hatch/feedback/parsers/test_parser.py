@@ -11,6 +11,21 @@ class TestResultParser:
         passed = len(re.findall(r"::(\w+)\s+PASSED", text))
         failed = len(re.findall(r"::(\w+)\s+FAILED", text))
         total = passed + failed
+
+        errors: list[TestError] = []
+
+        # 收集级错误: collected 0 items / N errors 或 interrupted
+        coll_error_match = re.search(r"collected\s+\d+\s+items?\s*/\s*(\d+)\s+errors?", text)
+        if coll_error_match:
+            coll_errors = int(coll_error_match.group(1))
+            for i in range(coll_errors):
+                errors.append(TestError(
+                    test_name=f"collection_error_{i+1}",
+                    error_type="CollectionError",
+                    message="pytest 收集阶段错误",
+                    file_path="",
+                ))
+
         if total == 0:
             total_match = re.search(r"collected\s+(\d+)\s+items?", text)
             pass_match = re.search(r"(\d+)\s+passed", text)
@@ -22,7 +37,6 @@ class TestResultParser:
             if fail_match:
                 failed = int(fail_match.group(1))
 
-        errors: list[TestError] = []
         fail_blocks = re.split(r"={5,}\s*FAILURES\s*={5,}", text)
         if len(fail_blocks) > 1:
             failures_text = fail_blocks[1]
@@ -55,4 +69,8 @@ class TestResultParser:
                     expected=expected,
                     actual=actual,
                 ))
+
+        failed += len([e for e in errors if e.test_name.startswith("collection_error")])
+        total = passed + failed
+
         return TestResult(total=total, passed=passed, failed=failed, errors=errors)

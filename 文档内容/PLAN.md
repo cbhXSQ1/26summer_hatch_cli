@@ -19,7 +19,7 @@ Phase 0 (项目脚手架)
                     └─► Phase 8 (机制演示 + 集成)
 ```
 
-Phase 1 内的 T1.2~T1.5 可并行；Phase 2 内的 T2.2~T2.4 可并行；Phase 5 内的 T5.2~T5.4 可并行。
+Phase 1 内的 T1.2~T1.5 可并行；Phase 2 内的 T2.2~T2.4c 可并行；Phase 5 内的 T5.2~T5.4 可并行。
 
 ---
 
@@ -92,6 +92,7 @@ Phase 1 内的 T1.2~T1.5 可并行；Phase 2 内的 T2.2~T2.4 可并行；Phase 
 |----|------|
 | **目标** | 实现 API Key 的安全存储与读取 |
 | **涉及文件** | `hatch/security/key_manager.py`、`tests/test_security.py` |
+| **依赖** | T1.1 |
 | **实现要点** | `KeyManager` 封装 `keyring`：`set_key(provider, key)` → 存储到 `hatch/<provider>`；`get_key(provider)` → 读取；`delete_key(provider)` → 删除；`list_providers()` → 列出已存储的 provider；后备方案：`~/.hatch/.env` 文件读取（文档标注风险） |
 | **验证** | 测试：Mock keyring，验证 set/get/delete 流程；key 值不暴露在日志中；`get_key` 返回 `None` 时正确处理 |
 
@@ -129,15 +130,35 @@ Phase 1 内的 T1.2~T1.5 可并行；Phase 2 内的 T2.2~T2.4 可并行；Phase 
 | **实现要点** | `subprocess.run` 执行命令；捕获 stdout/stderr；超时 30s 默认；工作目录限定在项目根内；返回 `ToolResult(success, output, error, exit_code)` |
 | **验证** | 测试：执行 `echo hello` 返回正确输出；超时命令被终止；退出码非零时 success=False；stderr 捕获正确 |
 
-### T2.4 — TestRunner + Linter + TypeChecker
+### T2.4a — TestRunner
 
 | 项 | 内容 |
 |----|------|
-| **目标** | 实现代码质量检查工具 |
-| **涉及文件** | `hatch/tools/test_runner.py`、`hatch/tools/linter.py`、`hatch/tools/type_checker.py`、`tests/test_tools.py`（追加） |
+| **目标** | 实现测试运行工具 |
+| **涉及文件** | `hatch/tools/test_runner.py`、`tests/test_tools.py`（追加） |
 | **依赖** | T2.1 |
-| **实现要点** | TestRunner：执行 `pytest`，超时 120s，返回 stdout+stderr；Linter：执行 `flake8 <path>`，返回 stdout；TypeChecker：执行 `mypy <path>`，返回 stdout；三者都返回原始输出文本，解析由 Feedback 模块负责 |
-| **验证** | 测试：对合法代码运行各工具，验证返回 ToolResult；pytest 不存在时优雅报错；flake8/mypy 未安装时给出安装提示 |
+| **实现要点** | TestRunner：执行 `pytest`，超时 120s，返回 stdout+stderr |
+| **验证** | 测试：对合法代码运行，验证返回 ToolResult；pytest 不存在时优雅报错 |
+
+### T2.4b — Linter
+
+| 项 | 内容 |
+|----|------|
+| **目标** | 实现代码风格检查工具 |
+| **涉及文件** | `hatch/tools/linter.py`、`tests/test_tools.py`（追加） |
+| **依赖** | T2.1 |
+| **实现要点** | Linter：执行 `flake8 <path>`，返回 stdout |
+| **验证** | 测试：flake8 未安装时给出安装提示 |
+
+### T2.4c — TypeChecker
+
+| 项 | 内容 |
+|----|------|
+| **目标** | 实现类型检查工具 |
+| **涉及文件** | `hatch/tools/type_checker.py`、`tests/test_tools.py`（追加） |
+| **依赖** | T2.1 |
+| **实现要点** | TypeChecker：执行 `mypy <path>`，返回 stdout |
+| **验证** | 测试：mypy 未安装时给出安装提示 |
 
 ---
 
@@ -381,7 +402,7 @@ worktree 1: T0.1 → T0.2 → T1.1 → T1.2 → T1.3
 worktree 2:              T1.1 → T1.4
 worktree 3:              T1.1 → T1.5
 
-worktree 1: T2.1 → T2.2 → T2.3 → T2.4
+worktree 1: T2.1 → T2.2 → T2.3 → T2.4a → T2.4b → T2.4c
 worktree 2: T3.1 → T3.2 → T3.3
 worktree 3: T4.1 → T4.2
 
@@ -397,33 +418,35 @@ worktree 1: T7.1 → T7.2 → T8.1 → T8.2 → T8.3 → T8.4 → T8.5
 
 | Task | 状态 | Commit Hash | 备注 |
 |------|------|-------------|------|
-| T0.1 | ⬜ | | |
-| T0.2 | ⬜ | | |
-| T1.1 | ⬜ | | |
-| T1.2 | ⬜ | | |
-| T1.3 | ⬜ | | |
-| T1.4 | ⬜ | | |
-| T1.5 | ⬜ | | |
-| T2.1 | ⬜ | | |
-| T2.2 | ⬜ | | |
-| T2.3 | ⬜ | | |
-| T2.4 | ⬜ | | |
-| T3.1 | ⬜ | | |
-| T3.2 | ⬜ | | |
-| T3.3 | ⬜ | | |
-| T4.1 | ⬜ | | |
-| T4.2 | ⬜ | | |
-| T5.1 | ⬜ | | |
-| T5.2 | ⬜ | | |
-| T5.3 | ⬜ | | |
-| T5.4 | ⬜ | | |
-| T5.5 | ⬜ | | |
-| T5.6 | ⬜ | | |
-| T5.7 | ⬜ | | |
-| T5.8 | ⬜ | | |
-| T6.1 | ⬜ | | |
-| T7.1 | ⬜ | | |
-| T7.2 | ⬜ | | |
+| T0.1 | ✅ | `ffc0210` | |
+| T0.2 | ✅ | `ffc0210` | |
+| T1.1 | ✅ | `ffc0210` | |
+| T1.2 | ✅ | `70a539e` | |
+| T1.3 | ✅ | `34d2696` | |
+| T1.4 | ✅ | `77eab91` | |
+| T1.5 | ✅ | `b3c62f8` | |
+| T2.1 | ✅ | `ea10f23` | |
+| T2.2 | ✅ | `b05f0e5` | |
+| T2.3 | ✅ | `799cc82` | |
+| T2.4a | ✅ | `986edf8` | |
+| T2.4b | ✅ | `5e784e7` | |
+| T2.4c | ✅ | `cede033` | |
+| T3.1 | ✅ | `27658c2` | |
+| T3.2 | ✅ | `f8b3a1f` | |
+| T3.3 | ✅ | `e47752f` | |
+| T4.1 | ✅ | `2a2a3c2` | |
+| T4.2 | ✅ | `23c666a` | |
+| T5.1 | ✅ | `19a663b` | |
+| T5.2 | ✅ | `7a6c551` | |
+| T5.3 | ✅ | `7a6c551` | |
+| T5.4 | ✅ | `7a6c551` | |
+| T5.5 | ✅ | `6d43be8` | |
+| T5.6 | ✅ | `512382e` | |
+| T5.7 | ✅ | `2bb505d` | |
+| T5.8 | ✅ | `390c627` | |
+| T6.1 | ✅ | `aad43a8` | |
+| T7.1 | ✅ | `bb289e1` | |
+| T7.2 | ✅ | `7983b7e` | |
 | T8.1 | ⬜ | | |
 | T8.2 | ⬜ | | |
 | T8.3 | ⬜ | | |
