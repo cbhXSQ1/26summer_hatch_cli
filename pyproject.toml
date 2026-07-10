@@ -48,6 +48,7 @@ include = ["hatch*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "demo_*.py"]
+norecursedirs = ["fixtures", ".hatch_backup"]
 filterwarnings = [
     "ignore:cannot collect test class.*because it has a __init__ constructor",
 ]
