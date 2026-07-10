@@ -36,6 +36,23 @@ class FailureClassifier:
                     priority=FailureCategory.RUNTIME_ERROR.value,
                 ))
 
+        # 如果有 failed 计数但没有详细 error 对象，补充合成失败
+        if test_result.failed > len(test_result.errors):
+            from hatch.core.models import TestError
+            missing = test_result.failed - len(test_result.errors)
+            for i in range(missing):
+                synthetic_err = TestError(
+                    test_name=f"test_{i+1}",
+                    error_type="Unknown",
+                    message="测试失败（未解析到详情）",
+                    file_path="",
+                )
+                failures.append(ClassifiedFailure(
+                    category=FailureCategory.RUNTIME_ERROR,
+                    failures=[synthetic_err],
+                    priority=FailureCategory.RUNTIME_ERROR.value,
+                ))
+
         for issue in lint_result.issues:
             failures.append(ClassifiedFailure(
                 category=FailureCategory.STYLE_ISSUE,
