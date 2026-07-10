@@ -14,6 +14,18 @@ class FeedbackEngine:
         self._history: list[FeedbackSummary] = []
 
     def process(self, action: Action, result: ToolResult, round_number: int) -> FeedbackSummary:
+        if not result.success and result.error:
+            summary = FeedbackSummary(
+                success=False,
+                total_issues=1,
+                context_for_llm=f"执行失败: {result.error}",
+                round_number=round_number,
+            )
+            self._history.append(summary)
+            if self.is_stuck():
+                summary.context_for_llm += "\n\n注意: 连续两轮反馈相同，请尝试不同的修正方法。"
+            return summary
+
         if action.tool_name == "test_runner":
             test_result = TestResultParser.parse(result.output)
             lint_result = LintResultParser().parse("")
