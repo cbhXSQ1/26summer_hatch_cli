@@ -3,6 +3,7 @@
 from hatch.core.models import (
     TestResult, TestError, LintResult, LintIssue,
     TypeCheckResult, TypeCheckError, FailureCategory,
+    ClassifiedFailure,
 )
 from hatch.feedback.classifier import FailureClassifier
 
@@ -75,3 +76,54 @@ class TestFailureClassifier:
         failures = FailureClassifier.classify(test_result, LintResult(), TypeCheckResult())
         assert failures[0].category == FailureCategory.SYNTAX_ERROR
         assert failures[1].category == FailureCategory.LOGIC_ERROR
+
+
+class TestCorrectionStrategySelector:
+    """CorrectionStrategySelector"""
+
+    def test_syntax_error_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.SYNTAX_ERROR,
+            failures=[TestError(
+                test_name="t", error_type="SyntaxError",
+                message="invalid syntax", file_path="app.py", line_number=5,
+            )],
+            priority=1,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "app.py" in text
+        assert "5" in text
+        assert "syntax" in text.lower()
+
+    def test_logic_error_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.LOGIC_ERROR,
+            failures=[TestError(
+                test_name="test_add", error_type="AssertionError",
+                message="assert 5 == 6", file_path="test_calc.py",
+                expected="6", actual="5",
+            )],
+            priority=3,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "test_add" in text
+        assert "6" in text
+        assert "5" in text
+
+    def test_style_strategy(self) -> None:
+        from hatch.feedback.strategies import CorrectionStrategySelector
+
+        cf = ClassifiedFailure(
+            category=FailureCategory.STYLE_ISSUE,
+            failures=[LintIssue(
+                file_path="app.py", line=15, column=80, code="E501",
+                message="line too long",
+            )],
+            priority=5,
+        )
+        text = CorrectionStrategySelector.select(cf)
+        assert "E501" in text
