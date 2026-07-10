@@ -127,3 +127,39 @@ class TestCorrectionStrategySelector:
         )
         text = CorrectionStrategySelector.select(cf)
         assert "E501" in text
+
+
+class TestFeedbackAggregator:
+    """FeedbackAggregator"""
+
+    def test_all_success(self) -> None:
+        from hatch.feedback.aggregator import FeedbackAggregator
+
+        summary = FeedbackAggregator.aggregate(TestResult(), LintResult(), TypeCheckResult(), 1)
+        assert summary.success is True
+        assert summary.total_issues == 0
+        assert summary.round_number == 1
+
+    def test_with_failures(self) -> None:
+        from hatch.feedback.aggregator import FeedbackAggregator
+
+        test_result = TestResult(
+            total=1, failed=1,
+            errors=[TestError(
+                test_name="t", error_type="AssertionError",
+                message="assert 5 == 6", file_path="test.py",
+            )],
+        )
+        summary = FeedbackAggregator.aggregate(test_result, LintResult(), TypeCheckResult(), 2)
+        assert summary.success is False
+        assert summary.total_issues > 0
+        assert len(summary.context_for_llm) > 0
+
+    def test_top_issues_limited_to_5(self) -> None:
+        from hatch.feedback.aggregator import FeedbackAggregator
+
+        lint = LintResult(issues=[LintIssue(
+            file_path=f"f{i}.py", line=i, column=0, code="E501", message="long"
+        ) for i in range(10)])
+        summary = FeedbackAggregator.aggregate(TestResult(), lint, TypeCheckResult(), 1)
+        assert len(summary.top_issues) <= 5
