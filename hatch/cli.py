@@ -68,8 +68,8 @@ def _verbose_printer(event: dict) -> None:
     elif etype == "llm_output":
         text = event["text"].strip()
         if text:
-            import re
-            clean = re.sub(r"```json\s*\[\s*\]\s*```", "", text, flags=re.DOTALL).strip()
+            from hatch.core.parser import ActionParser
+            clean = ActionParser.extract_text(text)
             if clean:
                 for line in clean.split("\n")[:8]:
                     click.echo(f"│ {line}")
