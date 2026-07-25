@@ -68,10 +68,14 @@ def _verbose_printer(event: dict) -> None:
     elif etype == "llm_output":
         text = event["text"].strip()
         if text:
-            for line in text.split("\n")[:6]:
-                click.echo(f"│ {line}")
-            if len(text.split("\n")) > 6:
-                click.echo(f"│ ...")
+            # 只显示非 JSON 部分
+            import re
+            clean = re.sub(r"```json\s*\[\s*\]\s*```", "", text, flags=re.DOTALL).strip()
+            if clean:
+                for line in clean.split("\n")[:6]:
+                    click.echo(f"│ {line}")
+                if len(clean.split("\n")) > 6:
+                    click.echo(f"│ ...")
 
     elif etype == "tool_call":
         name = event["name"]
