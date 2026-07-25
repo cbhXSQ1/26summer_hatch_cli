@@ -78,6 +78,35 @@ class TestRunCommand:
             assert "任务完成" in result.output
             assert "success" in result.output
 
+    def test_run_with_cwd_option(self, runner, tmp_path):
+        """测试 --cwd 切换到指定目录"""
+        mock_config = Config()
+        mock_config.llm.provider = "deepseek"
+        mock_config.llm.model = "deepseek-v4-pro"
+
+        mock_state = LoopState()
+        mock_state.status = "success"
+        mock_state.round = 1
+        mock_state.max_rounds = 3
+
+        workdir = tmp_path / "my_project"
+        workdir.mkdir()
+
+        with patch("hatch.cli.ConfigLoader.load", return_value=mock_config), \
+             patch("hatch.cli.KeyManager") as mock_km_class, \
+             patch("hatch.cli.DeepSeekLLM"), \
+             patch("hatch.cli.AgentLoop") as mock_loop_class:
+            mock_km = mock_km_class.return_value
+            mock_km.get_key.return_value = "sk-test-key"
+
+            mock_loop = mock_loop_class.return_value
+            mock_loop.run.return_value = mock_state
+
+            result = runner.invoke(main, ["run", "--cwd", str(workdir), "write code"])
+            assert result.exit_code == 0
+            assert "工作目录" in result.output
+            assert "任务完成" in result.output
+
     def test_run_with_valid_glm(self, runner):
         mock_config = Config()
         mock_config.llm.provider = "glm"

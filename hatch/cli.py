@@ -25,8 +25,15 @@ def main() -> None:
 
 @main.command()
 @click.argument("task")
-def run(task: str) -> None:
+@click.option("--cwd", default=None, help="工作目录 (默认当前目录)")
+def run(task: str, cwd: str | None) -> None:
     """执行 agent 任务"""
+    import os
+    if cwd:
+        os.makedirs(cwd, exist_ok=True)
+        os.chdir(cwd)
+        click.echo(f"工作目录: {os.getcwd()}")
+
     config = ConfigLoader.load("hatch.yaml")
     km = KeyManager()
     api_key = km.get_key(config.llm.provider)
