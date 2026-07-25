@@ -120,7 +120,7 @@ class SessionManager:
             data = {"meta": {}, "turns": []}
         data.setdefault("turns", []).append({
             "role": role,
-            "content": content[:2000],
+            "content": content[:8000],
             "time": datetime.now().isoformat(),
         })
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

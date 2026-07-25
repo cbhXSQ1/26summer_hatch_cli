@@ -89,6 +89,11 @@ class AgentLoop:
 
             emit({"type": "llm_output", "text": llm_output[:500]})
 
+            # 保存 LLM 的自然语言推理作为助手回复
+            assistant_text = ActionParser.extract_text(llm_output).strip()
+            if assistant_text:
+                state.context_text = assistant_text
+
             all_ok = True
             for action in actions:
                 emit({
