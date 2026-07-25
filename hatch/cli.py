@@ -63,19 +63,10 @@ def _verbose_printer(event: dict) -> None:
         click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
 
     elif etype == "thinking":
-        click.echo("│ 🧠 思考中...")
+        click.secho("  🧠 思考中...", fg="yellow")
 
     elif etype == "stream_chunk":
-        text = event["text"]
-        if text.startswith("│ ") or text.startswith("\n"):
-            click.echo(text, nl=False)
-        else:
-            # 给每行加 │ 前缀
-            import re
-            result = re.sub(r"(?<=\n)(?=[^\n])", "│ ", text)
-            if not result.startswith("│ "):
-                result = "│ " + result
-            click.echo(result, nl=False)
+        click.echo(event["text"], nl=False)
 
     elif etype == "llm_output":
         pass  # 流式输出已显示内容，llm_output 仅内部使用
