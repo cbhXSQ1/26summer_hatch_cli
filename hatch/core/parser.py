@@ -41,12 +41,15 @@ class ActionParser:
         """提取代码块之外的自然语言文本"""
         cleaned = re.sub(r"```json\s*.*?\s*```", "", llm_output, flags=re.DOTALL)
         cleaned = re.sub(r"```\w*\s*.*?\s*```", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"^\s*\[\s*\]\s*$", "", cleaned)
+        cleaned = re.sub(r"^\s*\[[\s\S]*\]\s*$", "", cleaned)
         return cleaned.strip()
 
     @staticmethod
     def has_json_block(llm_output: str) -> bool:
         """检查是否包含 ```json 代码块或裸 JSON 数组"""
         return bool(
-            re.search(r"```json\s*\[", llm_output, re.DOTALL) or
-            re.search(r"^\s*\[", llm_output)
+            re.search(r"```json", llm_output, re.DOTALL) or
+            re.search(r"^\s*\[\s*{", llm_output) or
+            re.search(r"^\s*\[\s*\]\s*$", llm_output)
         )
