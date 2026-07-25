@@ -54,23 +54,104 @@ def main() -> None:
     pass
 
 
+def _verbose_printer(event: dict) -> None:
+    """格式化打印循环事件到终端"""
+    etype = event["type"]
+
+    if etype == "round_start":
+        click.echo()
+        click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
+
+    elif etype == "thinking":
+        click.secho("│ 🧠 思考中...", fg="yellow")
+
+    elif etype == "llm_output":
+        text = event["text"].strip()
+        if text:
+            for line in text.split("\n")[:6]:
+                click.echo(f"│ {line}")
+            if len(text.split("\n")) > 6:
+                click.echo(f"│ ...")
+
+    elif etype == "tool_call":
+        name = event["name"]
+        params = event["params"]
+        click.secho(f"│ 🔧 调用工具: {name}", fg="green")
+        for k, v in params.items():
+            val = str(v)[:100]
+            click.echo(f"│    {k}: {val}")
+
+    elif etype == "tool_result":
+        success = event["success"]
+        name = event["name"]
+        output = event.get("output", "")
+        if success:
+            click.secho(f"│ ✅ {name} 成功", fg="green")
+        else:
+            click.secho(f"│ ❌ {name} 失败", fg="red")
+        if output and output != "(no output)":
+            for line in output.split("\n")[:3]:
+                click.echo(f"│    {line}")
+
+    elif etype == "guardrail_block":
+        click.secho(f"│ 🛑 护栏拦截: {event['reason']}", fg="red", bold=True)
+
+    elif etype == "guardrail_approve":
+        click.secho(f"│ ⚠️  需要审批: {event['reason']}", fg="yellow")
+
+    elif etype == "guardrail_denied":
+        click.secho("│ ❌ 审批被拒绝", fg="red")
+
+    elif etype == "feedback":
+        if event["success"]:
+            click.secho("│ ✅ 反馈: 全部通过", fg="green")
+        else:
+            click.secho(f"│ 📋 反馈: {event['issues']} 个问题", fg="yellow")
+            ctx = event.get("context", "")
+            if ctx:
+                for line in ctx.split("\n")[:3]:
+                    click.echo(f"│    {line}")
+
+    elif etype == "round_end":
+        if event["all_ok"]:
+            click.secho("└─ 本轮通过 ✓", fg="green")
+        else:
+            click.secho("└─ 本轮未通过，进行下一轮...", fg="yellow")
+
+    elif etype == "done":
+        status = event["status"]
+        if status == "success":
+            click.secho(f"\n🎉 任务成功完成 ({event['rounds']} 轮)", fg="green", bold=True)
+        elif status == "failed":
+            click.secho(f"\n💥 任务失败 ({event['rounds']} 轮)", fg="red", bold=True)
+        elif status == "stopped":
+            click.secho("\n🛑 任务被护栏中止", fg="red", bold=True)
+
+    elif etype == "warning":
+        click.secho(f"│ ⚠️  {event['msg']}", fg="yellow")
+
+
 @main.command()
 @click.argument("task")
 @click.option("--cwd", default=None, help="工作目录 (默认当前目录)")
-def run(task: str, cwd: str | None) -> None:
+@click.option("--verbose/--quiet", default=True, help="显示详细输出")
+def run(task: str, cwd: str | None, verbose: bool) -> None:
     """执行 agent 任务"""
     if cwd:
         os.makedirs(cwd, exist_ok=True)
         os.chdir(cwd)
-        click.echo(f"工作目录: {os.getcwd()}")
+
+    if verbose:
+        click.echo(f"📂 {os.getcwd()}")
 
     sm = SessionManager(os.getcwd())
     session_id, is_new = sm.get_active_or_create(task)
 
-    if is_new:
-        click.echo(f"新对话: {session_id}")
-    else:
-        click.echo(f"继续对话: {session_id}")
+    if verbose:
+        if is_new:
+            click.echo(f"💬 新对话: {session_id}")
+        else:
+            click.echo(f"💬 继续对话: {session_id}")
 
     config = ConfigLoader.load("hatch.yaml")
     km = KeyManager()
@@ -88,7 +169,10 @@ def run(task: str, cwd: str | None) -> None:
     registry = _build_registry(config)
 
     loop = AgentLoop()
-    state = loop.run(task=task, llm=llm, registry=registry, config=config)
+    state = loop.run(
+        task=task, llm=llm, registry=registry, config=config,
+        on_event=_verbose_printer if verbose else None,
+    )
 
     sm.update_status(session_id, state.round, state.status)
     sm.save_history(session_id, [
@@ -96,7 +180,8 @@ def run(task: str, cwd: str | None) -> None:
         for h in state.history
     ])
 
-    click.echo(f"\n任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
+    if not verbose:
+        click.echo(f"任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
 
 
 @main.group()

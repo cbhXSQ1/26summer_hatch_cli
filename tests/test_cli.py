@@ -81,7 +81,7 @@ class TestRunCommand:
             mock_loop = mock_loop_class.return_value
             mock_loop.run.return_value = mock_state
 
-            result = runner.invoke(main, ["run", "fix the bug"])
+            result = runner.invoke(main, ["run", "--quiet", "fix the bug"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
             mock_sm.update_status.assert_called_once()
@@ -110,9 +110,8 @@ class TestRunCommand:
             mock_loop = mock_loop_class.return_value
             mock_loop.run.return_value = mock_state
 
-            result = runner.invoke(main, ["run", "--cwd", str(workdir), "write code"])
+            result = runner.invoke(main, ["run", "--quiet", "--cwd", str(workdir), "write code"])
             assert result.exit_code == 0
-            assert "工作目录" in result.output
             assert "任务完成" in result.output
 
     def test_run_with_valid_glm(self, runner, mock_sm):
@@ -135,7 +134,7 @@ class TestRunCommand:
             mock_loop = mock_loop_class.return_value
             mock_loop.run.return_value = mock_state
 
-            result = runner.invoke(main, ["run", "fix the bug"])
+            result = runner.invoke(main, ["run", "--quiet", "fix the bug"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
 
