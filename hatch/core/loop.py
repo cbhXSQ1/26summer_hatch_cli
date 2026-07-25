@@ -64,7 +64,13 @@ class AgentLoop:
             actions = ActionParser.parse(llm_output)
 
             if not actions:
-                emit({"type": "warning", "msg": "LLM 未返回有效动作"})
+                if ActionParser.has_json_block(llm_output):
+                    text_response = ActionParser.extract_text(llm_output)
+                    emit({"type": "llm_text", "text": text_response or "(空回复)"})
+                    state.status = "success"
+                    emit({"type": "done", "status": "success", "rounds": round_num})
+                    return state
+                emit({"type": "warning", "msg": "LLM 未返回有效 JSON 动作"})
                 state.status = "failed"
                 emit({"type": "done", "status": "failed", "rounds": round_num})
                 return state

@@ -127,6 +127,11 @@ def _verbose_printer(event: dict) -> None:
         elif status == "stopped":
             click.secho("\n🛑 任务被护栏中止", fg="red", bold=True)
 
+    elif etype == "llm_text":
+        click.secho("│ 💬 LLM 回复:", fg="cyan")
+        for line in event["text"].split("\n")[:20]:
+            click.echo(f"│    {line}")
+
     elif etype == "warning":
         click.secho(f"│ ⚠️  {event['msg']}", fg="yellow")
 

@@ -46,3 +46,33 @@ class TestActionParser:
         output = """[{"tool_name": "echo", "parameters": {}}]"""
         actions = ActionParser.parse(output)
         assert actions[0].raw_llm_output == output
+
+    def test_extract_text_outside_json(self) -> None:
+        output = """这是一段回复文本。
+```json
+[]
+```"""
+        text = ActionParser.extract_text(output)
+        assert "这是一段回复文本" in text
+        assert "[]" not in text
+
+    def test_extract_text_no_code_block(self) -> None:
+        output = "纯文本回复，没有代码块"
+        text = ActionParser.extract_text(output)
+        assert text == "纯文本回复，没有代码块"
+
+    def test_extract_text_empty(self) -> None:
+        output = """```json
+[]
+```"""
+        text = ActionParser.extract_text(output)
+        assert text == ""
+
+    def test_has_json_block_with_fence(self) -> None:
+        assert ActionParser.has_json_block("```json\n[]\n```") is True
+
+    def test_has_json_block_bare_array(self) -> None:
+        assert ActionParser.has_json_block("[{\"tool\": \"x\"}]") is True
+
+    def test_has_json_block_no_json(self) -> None:
+        assert ActionParser.has_json_block("just some text") is False
