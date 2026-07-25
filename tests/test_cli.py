@@ -107,25 +107,23 @@ class TestKeySet:
     """key set --provider"""
 
     def test_key_set_prompts_and_saves(self, runner):
-        with patch("hatch.cli.KeyManager") as mock_km_class:
+        with patch("hatch.cli.KeyManager") as mock_km_class, \
+             patch("builtins.input") as mock_input:
+            mock_input.return_value = "sk-my-secret-key"
             mock_km = mock_km_class.return_value
 
-            result = runner.invoke(
-                main, ["key", "set", "--provider", "deepseek"],
-                input="sk-my-secret-key\nsk-my-secret-key\n",
-            )
+            result = runner.invoke(main, ["key", "set", "--provider", "deepseek"])
             assert result.exit_code == 0
             assert "已保存" in result.output
             mock_km.set_key.assert_called_once_with("deepseek", "sk-my-secret-key")
 
     def test_key_set_default_provider(self, runner):
-        with patch("hatch.cli.KeyManager") as mock_km_class:
+        with patch("hatch.cli.KeyManager") as mock_km_class, \
+             patch("builtins.input") as mock_input:
+            mock_input.return_value = "sk-another-key"
             mock_km = mock_km_class.return_value
 
-            result = runner.invoke(
-                main, ["key", "set"],
-                input="sk-another-key\nsk-another-key\n",
-            )
+            result = runner.invoke(main, ["key", "set"])
             assert result.exit_code == 0
             mock_km.set_key.assert_called_once_with("deepseek", "sk-another-key")
 
@@ -185,25 +183,23 @@ class TestKeyRotate:
     """key rotate --provider"""
 
     def test_key_rotate_clears_and_sets(self, runner):
-        with patch("hatch.cli.KeyManager") as mock_km_class:
+        with patch("hatch.cli.KeyManager") as mock_km_class, \
+             patch("builtins.input") as mock_input:
+            mock_input.return_value = "sk-new-rotated-key"
             mock_km = mock_km_class.return_value
 
-            result = runner.invoke(
-                main, ["key", "rotate", "--provider", "glm"],
-                input="sk-new-rotated-key\nsk-new-rotated-key\n",
-            )
+            result = runner.invoke(main, ["key", "rotate", "--provider", "glm"])
             assert result.exit_code == 0
             mock_km.delete_key.assert_called_once_with("glm")
             mock_km.set_key.assert_called_once_with("glm", "sk-new-rotated-key")
 
     def test_key_rotate_default_provider(self, runner):
-        with patch("hatch.cli.KeyManager") as mock_km_class:
+        with patch("hatch.cli.KeyManager") as mock_km_class, \
+             patch("builtins.input") as mock_input:
+            mock_input.return_value = "sk-rotated-default"
             mock_km = mock_km_class.return_value
 
-            result = runner.invoke(
-                main, ["key", "rotate"],
-                input="sk-rotated-default\nsk-rotated-default\n",
-            )
+            result = runner.invoke(main, ["key", "rotate"])
             assert result.exit_code == 0
             mock_km.delete_key.assert_called_with("deepseek")
             mock_km.set_key.assert_called_with("deepseek", "sk-rotated-default")
