@@ -67,14 +67,13 @@ def _verbose_printer(event: dict) -> None:
 
     elif etype == "llm_output":
         text = event["text"].strip()
-        if text and "tool_name" in text.lower():
+        if text:
             import re
             clean = re.sub(r"```json\s*\[\s*\]\s*```", "", text, flags=re.DOTALL).strip()
-            # 仅当有工具调用时才显示原始输出
-            if "tool_name" in clean.lower() or '"' in clean:
-                for line in clean.split("\n")[:6]:
+            if clean:
+                for line in clean.split("\n")[:8]:
                     click.echo(f"│ {line}")
-                if len(clean.split("\n")) > 6:
+                if len(clean.split("\n")) > 8:
                     click.echo(f"│ ...")
 
     elif etype == "tool_call":

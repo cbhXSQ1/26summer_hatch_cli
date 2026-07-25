@@ -61,7 +61,6 @@ class AgentLoop:
 
             emit({"type": "thinking", "msg": "调用 LLM..."})
             llm_output = llm.complete(messages)
-            emit({"type": "llm_output", "text": llm_output[:500]})
 
             actions = ActionParser.parse(llm_output)
 
@@ -82,10 +81,13 @@ class AgentLoop:
                     emit({"type": "done", "status": "success", "rounds": round_num})
                     return state
 
+                emit({"type": "llm_output", "text": llm_output[:500]})
                 emit({"type": "warning", "msg": "LLM 未返回有效 JSON 动作"})
                 state.status = "failed"
                 emit({"type": "done", "status": "failed", "rounds": round_num})
                 return state
+
+            emit({"type": "llm_output", "text": llm_output[:500]})
 
             all_ok = True
             for action in actions:
