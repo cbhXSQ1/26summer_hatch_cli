@@ -63,8 +63,7 @@ def _verbose_printer(event: dict) -> None:
         click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
 
     elif etype == "thinking":
-        click.echo()
-        click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
+        click.echo("│ 🧠 思考中...")
 
     elif etype == "stream_chunk":
         text = event["text"]
