@@ -82,8 +82,11 @@ def key() -> None:
 def key_set(provider: str) -> None:
     """录入 API Key"""
     km = KeyManager()
-    import getpass
-    api_key = getpass.getpass(f"请输入 {provider} 的 API Key: ")
+    api_key = click.prompt(
+        f"请输入 {provider} 的 API Key",
+        hide_input=True,
+        confirmation_prompt=True,
+    )
     km.set_key(provider, api_key)
     click.echo(f"已保存 {provider} 的 API Key")
 
