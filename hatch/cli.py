@@ -67,11 +67,11 @@ def _verbose_printer(event: dict) -> None:
 
     elif etype == "llm_output":
         text = event["text"].strip()
-        if text:
-            # 只显示非 JSON 部分
+        if text and "tool_name" in text.lower():
             import re
             clean = re.sub(r"```json\s*\[\s*\]\s*```", "", text, flags=re.DOTALL).strip()
-            if clean:
+            # 仅当有工具调用时才显示原始输出
+            if "tool_name" in clean.lower() or '"' in clean:
                 for line in clean.split("\n")[:6]:
                     click.echo(f"│ {line}")
                 if len(clean.split("\n")) > 6:
@@ -175,41 +175,6 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
 
     registry = _build_registry(config)
 
-    previous_turns = sm.get_conversation_turns(session_id, limit=10) if not is_new else []
-
-    loop = AgentLoop()
-    state = loop.run(
-        task=task, llm=llm, registry=registry, config=config,
-        on_event=_verbose_printer if verbose else None,
-        conversation_history=previous_turns,
-    )
-
-    sm.update_status(session_id, state.round, state.status)
-    sm.save_history(session_id, [
-        {"round": h.round_number, "success": h.success, "issues": h.total_issues}
-        for h in state.history
-    ])
-    sm.add_conversation_turn(session_id, "user", task)
-    if state.context_text:
-        sm.add_conversation_turn(session_id, "assistant", state.context_text)
-
-    if not verbose:
-        click.echo(f"任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
-    km = KeyManager()
-    api_key = km.get_key(config.llm.provider)
-
-    if not api_key:
-        click.echo(f"未找到 {config.llm.provider} 的 API Key，请先运行: hatch key set")
-        return
-
-    llm = _build_llm(config, api_key)
-    if llm is None:
-        click.echo(f"不支持的 provider: {config.llm.provider}")
-        return
-
-    registry = _build_registry(config)
-
-    # 加载历史对话上下文
     previous_turns = sm.get_conversation_turns(session_id, limit=10) if not is_new else []
 
     loop = AgentLoop()
