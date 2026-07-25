@@ -12,21 +12,9 @@ class SessionManager:
         self.workdir = Path(workdir) if workdir else Path.cwd()
         self.hatch_dir = self.workdir / ".hatch"
         self.sessions_dir = self.hatch_dir / "sessions"
-        self.config_path = self.hatch_dir / "config.yaml"
 
     def _ensure_dirs(self) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-
-    def _read_config(self) -> dict:
-        if not self.config_path.exists():
-            return {}
-        with open(self.config_path, encoding="utf-8") as f:
-            return json.loads(f.read())
-
-    def _write_config(self, data: dict) -> None:
-        self.hatch_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _read_index(self) -> list[dict]:
         index_path = self.sessions_dir / "index.json"
@@ -66,37 +54,29 @@ class SessionManager:
         self._write_index(index)
 
         self._session_path(session_id).write_text(
-            json.dumps({"meta": entry, "history": []}, ensure_ascii=False, indent=2),
+            json.dumps({"meta": entry, "turns": []}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-
-        self._write_config({"active_session": session_id})
         return session_id
 
-    def activate(self, session_id: str) -> None:
+    def get_latest(self) -> str | None:
         index = self._read_index()
-        if not any(e["id"] == session_id for e in index):
-            raise ValueError(f"会话 {session_id} 不存在")
-
-        self._write_config({"active_session": session_id})
-
-    def get_active(self) -> str | None:
-        config = self._read_config()
-        sid = config.get("active_session")
-        if sid is None:
+        if not index:
             return None
+        latest = max(index, key=lambda e: e.get("updated", ""))
+        return latest["id"]
 
-        index = self._read_index()
-        if not any(e["id"] == sid for e in index):
-            return None
-        return sid
+    def get_latest_or_create(self, task: str) -> tuple[str, bool]:
+        existing = self.get_latest()
+        if existing:
+            return existing, False
+        return self.create(task), True
 
     def get_info(self, session_id: str | None = None) -> dict | None:
         if session_id is None:
-            session_id = self.get_active()
+            session_id = self.get_latest()
         if session_id is None:
             return None
-
         index = self._read_index()
         for e in index:
             if e["id"] == session_id:
@@ -104,13 +84,9 @@ class SessionManager:
         return None
 
     def list_sessions(self) -> list[dict]:
-        return self._read_index()
-
-    def get_active_or_create(self, task: str) -> tuple[str, bool]:
-        existing = self.get_active()
-        if existing:
-            return existing, False
-        return self.create(task), True
+        index = self._read_index()
+        index.sort(key=lambda e: e.get("updated", ""), reverse=True)
+        return index
 
     def update_status(self, session_id: str, rounds: int, status: str) -> None:
         index = self._read_index()
@@ -122,15 +98,41 @@ class SessionManager:
                 break
         self._write_index(index)
 
+    def get_conversation_turns(self, session_id: str, limit: int = 10) -> list[dict]:
+        path = self._session_path(session_id)
+        if not path.exists():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            turns = data.get("turns", [])
+            return turns[-limit:] if len(turns) > limit else turns
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def add_conversation_turn(self, session_id: str, role: str, content: str) -> None:
+        path = self._session_path(session_id)
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                data = {"meta": {}, "turns": []}
+        else:
+            data = {"meta": {}, "turns": []}
+        data.setdefault("turns", []).append({
+            "role": role,
+            "content": content[:2000],
+            "time": datetime.now().isoformat(),
+        })
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def save_history(self, session_id: str, history_data: list[dict]) -> None:
         path = self._session_path(session_id)
         if path.exists():
             try:
-                existing = json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
-                existing = {"meta": {}, "history": []}
+                data = {"meta": {}, "turns": []}
         else:
-            existing = {"meta": {}, "history": []}
-
-        existing["history"] = history_data
-        path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+            data = {"meta": {}, "turns": []}
+        data["history"] = history_data
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

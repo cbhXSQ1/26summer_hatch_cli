@@ -10,6 +10,7 @@ class ContextBuilder:
         tools_desc: str,
         feedback: str = "",
         memory: str = "",
+        conversation_history: list[dict] | None = None,
     ) -> list[dict]:
         system_prompt = f"""You are a helpful coding agent. You have access to the following tools:
 
@@ -37,6 +38,13 @@ Here is your answer. The function works correctly.
             system_prompt += f"\n\nProject context:\n{memory}"
 
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+        if memory:
+            messages.append({"role": "user", "content": f"Project context:\n{memory}"})
+
+        if conversation_history:
+            for turn in conversation_history:
+                messages.append({"role": turn["role"], "content": turn["content"]})
 
         if feedback:
             messages.append({"role": "user", "content": f"Previous attempt feedback:\n{feedback}"})

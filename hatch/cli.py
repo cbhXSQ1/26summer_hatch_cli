@@ -154,13 +154,11 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
         click.echo(f"📂 {os.getcwd()}")
 
     sm = SessionManager(os.getcwd())
-    session_id, is_new = sm.get_active_or_create(task)
+    session_id, is_new = sm.get_latest_or_create(task)
 
     if verbose:
-        if is_new:
-            click.echo(f"💬 新对话: {session_id}")
-        else:
-            click.echo(f"💬 继续对话: {session_id}")
+        label = "新对话" if is_new else "继续对话"
+        click.echo(f"💬 {label}: {session_id}")
 
     config = ConfigLoader.load("hatch.yaml")
     km = KeyManager()
@@ -177,10 +175,13 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
 
     registry = _build_registry(config)
 
+    previous_turns = sm.get_conversation_turns(session_id, limit=10) if not is_new else []
+
     loop = AgentLoop()
     state = loop.run(
         task=task, llm=llm, registry=registry, config=config,
         on_event=_verbose_printer if verbose else None,
+        conversation_history=previous_turns,
     )
 
     sm.update_status(session_id, state.round, state.status)
@@ -188,6 +189,44 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
         {"round": h.round_number, "success": h.success, "issues": h.total_issues}
         for h in state.history
     ])
+    sm.add_conversation_turn(session_id, "user", task)
+    if state.context_text:
+        sm.add_conversation_turn(session_id, "assistant", state.context_text)
+
+    if not verbose:
+        click.echo(f"任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
+    km = KeyManager()
+    api_key = km.get_key(config.llm.provider)
+
+    if not api_key:
+        click.echo(f"未找到 {config.llm.provider} 的 API Key，请先运行: hatch key set")
+        return
+
+    llm = _build_llm(config, api_key)
+    if llm is None:
+        click.echo(f"不支持的 provider: {config.llm.provider}")
+        return
+
+    registry = _build_registry(config)
+
+    # 加载历史对话上下文
+    previous_turns = sm.get_conversation_turns(session_id, limit=10) if not is_new else []
+
+    loop = AgentLoop()
+    state = loop.run(
+        task=task, llm=llm, registry=registry, config=config,
+        on_event=_verbose_printer if verbose else None,
+        conversation_history=previous_turns,
+    )
+
+    sm.update_status(session_id, state.round, state.status)
+    sm.save_history(session_id, [
+        {"round": h.round_number, "success": h.success, "issues": h.total_issues}
+        for h in state.history
+    ])
+    sm.add_conversation_turn(session_id, "user", task)
+    if state.context_text:
+        sm.add_conversation_turn(session_id, "assistant", state.context_text)
 
     if not verbose:
         click.echo(f"任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
@@ -214,15 +253,16 @@ def session_new(cwd: str | None) -> None:
 @click.argument("session_id")
 @click.option("--cwd", default=None, help="工作目录")
 def session_use(session_id: str, cwd: str | None) -> None:
-    """切换到指定对话"""
+    """切换到指定对话（更新其时间为最新）"""
     if cwd:
         os.chdir(cwd)
     sm = SessionManager(os.getcwd())
-    try:
-        sm.activate(session_id)
-        click.echo(f"已切换到对话: {session_id}")
-    except ValueError:
-        click.echo(f"会话 {session_id} 不存在，请使用 'hatch session list' 查看")
+    info = sm.get_info(session_id)
+    if info is None:
+        click.echo(f"会话 {session_id} 不存在")
+        return
+    sm.update_status(session_id, info.get("rounds", 0), info.get("status", "active"))
+    click.echo(f"已切换到对话: {session_id}")
 
 
 @session.command("list")
@@ -233,14 +273,14 @@ def session_list(cwd: str | None) -> None:
         os.chdir(cwd)
     sm = SessionManager(os.getcwd())
     sessions = sm.list_sessions()
-    active = sm.get_active()
+    latest = sm.get_latest()
 
     if not sessions:
         click.echo("暂无对话记录")
         return
 
     for s in sessions:
-        marker = " *" if s["id"] == active else ""
+        marker = " *" if s["id"] == latest else ""
         click.echo(f"  {s['id']}{marker}")
         click.echo(f"    任务: {s['task']}")
         click.echo(f"    轮次: {s['rounds']}  状态: {s['status']}")
@@ -255,9 +295,9 @@ def session_info(cwd: str | None) -> None:
     if cwd:
         os.chdir(cwd)
     sm = SessionManager(os.getcwd())
-    sid = sm.get_active()
+    sid = sm.get_latest()
     if sid is None:
-        click.echo("无活跃对话，请先运行 'hatch run' 或 'hatch session new'")
+        click.echo("无对话记录")
         return
     info = sm.get_info(sid)
     click.echo(f"会话 ID: {info['id']}")

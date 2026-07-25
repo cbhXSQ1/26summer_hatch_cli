@@ -27,6 +27,7 @@ class AgentLoop:
         feedback_engine: FeedbackEngine | None = None,
         memory: SessionMemory | None = None,
         on_event: Callable[[dict], None] | None = None,
+        conversation_history: list[dict] | None = None,
     ) -> LoopState:
         max_rounds = config.loop.max_rounds
         feedback_engine = feedback_engine or FeedbackEngine()
@@ -55,6 +56,7 @@ class AgentLoop:
                 tools_desc=tools_desc,
                 feedback=feedback_text,
                 memory=mem_context,
+                conversation_history=conversation_history if round_num == 1 else None,
             )
 
             emit({"type": "thinking", "msg": "调用 LLM..."})
@@ -64,12 +66,22 @@ class AgentLoop:
             actions = ActionParser.parse(llm_output)
 
             if not actions:
-                if ActionParser.has_json_block(llm_output):
-                    text_response = ActionParser.extract_text(llm_output)
-                    emit({"type": "llm_text", "text": text_response or "(空回复)"})
+                text_response = ActionParser.extract_text(llm_output)
+                has_json = ActionParser.has_json_block(llm_output)
+
+                if text_response.strip():
+                    state.context_text = text_response.strip()
+                    emit({"type": "llm_text", "text": text_response.strip()})
                     state.status = "success"
                     emit({"type": "done", "status": "success", "rounds": round_num})
                     return state
+
+                if has_json:
+                    emit({"type": "llm_text", "text": "(空回复)"})
+                    state.status = "success"
+                    emit({"type": "done", "status": "success", "rounds": round_num})
+                    return state
+
                 emit({"type": "warning", "msg": "LLM 未返回有效 JSON 动作"})
                 state.status = "failed"
                 emit({"type": "done", "status": "failed", "rounds": round_num})

@@ -185,3 +185,4 @@ class LoopState:
     max_rounds: int = 3
     history: list[FeedbackSummary] = field(default_factory=list)
     status: str = "running"  # "running" | "success" | "failed" | "stopped"
+    context_text: str = ""   # LLM 最后回复的文本内容

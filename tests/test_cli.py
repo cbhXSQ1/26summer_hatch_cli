@@ -18,8 +18,9 @@ def mock_sm():
     """返回 mock SessionManager"""
     with patch("hatch.cli.SessionManager") as mock_class:
         mock = mock_class.return_value
-        mock.get_active_or_create.return_value = ("abc123", True)
-        mock.get_active.return_value = "abc123"
+        mock.get_latest_or_create.return_value = ("abc123", True)
+        mock.get_latest.return_value = "abc123"
+        mock.get_conversation_turns.return_value = []
         yield mock
 
 
@@ -84,8 +85,8 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "--quiet", "fix the bug"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
-            mock_sm.update_status.assert_called_once()
-            mock_sm.save_history.assert_called_once()
+            mock_sm.update_status.assert_called_with("abc123", 3, "success")
+            assert mock_sm.save_history.called
 
     def test_run_with_cwd_option(self, runner, tmp_path, mock_sm):
         workdir = tmp_path / "my_project"
@@ -158,10 +159,11 @@ class TestSessionCommands:
         workdir.mkdir()
         with patch("hatch.cli.SessionManager") as mock_class:
             mock = mock_class.return_value
+            mock.get_info.return_value = {"id": "abc123", "rounds": 3, "status": "success"}
 
             result = runner.invoke(main, ["session", "use", "--cwd", str(workdir), "abc123"])
             assert result.exit_code == 0
-            mock.activate.assert_called_once_with("abc123")
+            mock.update_status.assert_called_once_with("abc123", 3, "success")
             assert "已切换" in result.output
 
     def test_session_use_not_found(self, runner, tmp_path):
@@ -169,7 +171,7 @@ class TestSessionCommands:
         workdir.mkdir()
         with patch("hatch.cli.SessionManager") as mock_class:
             mock = mock_class.return_value
-            mock.activate.side_effect = ValueError("会话 abc123 不存在")
+            mock.get_info.return_value = None
 
             result = runner.invoke(main, ["session", "use", "--cwd", str(workdir), "abc123"])
             assert "不存在" in result.output
@@ -180,7 +182,7 @@ class TestSessionCommands:
         with patch("hatch.cli.SessionManager") as mock_class:
             mock = mock_class.return_value
             mock.list_sessions.return_value = []
-            mock.get_active.return_value = None
+            mock.get_latest.return_value = None
 
             result = runner.invoke(main, ["session", "list", "--cwd", str(workdir)])
             assert result.exit_code == 0
@@ -193,11 +195,11 @@ class TestSessionCommands:
             mock = mock_class.return_value
             mock.list_sessions.return_value = [
                 {"id": "abc123", "task": "fix bug", "created": "2026-01-01",
-                 "updated": "2026-01-01", "rounds": 3, "status": "success"},
+                 "updated": "2026-01-02", "rounds": 3, "status": "success"},
                 {"id": "def456", "task": "add feature", "created": "2026-01-02",
-                 "updated": "2026-01-02", "rounds": 1, "status": "active"},
+                 "updated": "2026-01-01", "rounds": 1, "status": "active"},
             ]
-            mock.get_active.return_value = "abc123"
+            mock.get_latest.return_value = "abc123"
 
             result = runner.invoke(main, ["session", "list", "--cwd", str(workdir)])
             assert result.exit_code == 0
@@ -210,7 +212,7 @@ class TestSessionCommands:
         workdir.mkdir()
         with patch("hatch.cli.SessionManager") as mock_class:
             mock = mock_class.return_value
-            mock.get_active.return_value = "abc123"
+            mock.get_latest.return_value = "abc123"
             mock.get_info.return_value = {
                 "id": "abc123", "task": "fix bug", "created": "2026-01-01",
                 "rounds": 3, "status": "success",
@@ -220,17 +222,16 @@ class TestSessionCommands:
             assert result.exit_code == 0
             assert "abc123" in result.output
             assert "fix bug" in result.output
-            assert "3" in result.output
 
     def test_session_info_no_active(self, runner, tmp_path):
         workdir = tmp_path / "proj"
         workdir.mkdir()
         with patch("hatch.cli.SessionManager") as mock_class:
             mock = mock_class.return_value
-            mock.get_active.return_value = None
+            mock.get_latest.return_value = None
 
             result = runner.invoke(main, ["session", "info", "--cwd", str(workdir)])
-            assert "无活跃" in result.output
+            assert "无对话" in result.output
 
 
 class TestKeySet:

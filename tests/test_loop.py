@@ -217,7 +217,8 @@ class TestAgentLoop:
             registry=registry,
             config=Config(),
         )
-        assert state.status == "failed"
+        assert state.status == "success"  # 纯文本回复算成功
+        assert "invalid" in state.context_text
 
     def test_loop_multiple_actions_single_round(self, tmp_path) -> None:
         from hatch.core.llm import MockLLM
