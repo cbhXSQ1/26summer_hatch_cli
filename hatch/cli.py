@@ -63,18 +63,23 @@ def _verbose_printer(event: dict) -> None:
         click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
 
     elif etype == "thinking":
-        click.secho("│ 🧠 思考中...", fg="yellow")
+        click.echo()
+        click.secho(f"┌─ 第 {event['round']}/{event['max_rounds']} 轮 ──────────────────────", fg="cyan", bold=True)
+
+    elif etype == "stream_chunk":
+        text = event["text"]
+        if text.startswith("│ ") or text.startswith("\n"):
+            click.echo(text, nl=False)
+        else:
+            # 给每行加 │ 前缀
+            import re
+            result = re.sub(r"(?<=\n)(?=[^\n])", "│ ", text)
+            if not result.startswith("│ "):
+                result = "│ " + result
+            click.echo(result, nl=False)
 
     elif etype == "llm_output":
-        text = event["text"].strip()
-        if text:
-            from hatch.core.parser import ActionParser
-            clean = ActionParser.extract_text(text)
-            if clean:
-                for line in clean.split("\n")[:8]:
-                    click.echo(f"│ {line}")
-                if len(clean.split("\n")) > 8:
-                    click.echo(f"│ ...")
+        pass  # 流式输出已显示内容，llm_output 仅内部使用
 
     elif etype == "tool_call":
         name = event["name"]

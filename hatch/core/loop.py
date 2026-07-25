@@ -60,7 +60,10 @@ class AgentLoop:
             )
 
             emit({"type": "thinking", "msg": "调用 LLM..."})
-            llm_output = llm.complete(messages)
+            llm_output = ""
+            for chunk in llm.stream(messages):
+                llm_output += chunk
+                emit({"type": "stream_chunk", "text": chunk})
 
             actions = ActionParser.parse(llm_output)
 
@@ -70,18 +73,15 @@ class AgentLoop:
 
                 if text_response.strip():
                     state.context_text = text_response.strip()
-                    emit({"type": "llm_text", "text": text_response.strip()})
                     state.status = "success"
                     emit({"type": "done", "status": "success", "rounds": round_num})
                     return state
 
                 if has_json:
-                    emit({"type": "llm_text", "text": "(空回复)"})
                     state.status = "success"
                     emit({"type": "done", "status": "success", "rounds": round_num})
                     return state
 
-                emit({"type": "llm_output", "text": llm_output[:500]})
                 emit({"type": "warning", "msg": "LLM 未返回有效 JSON 动作"})
                 state.status = "failed"
                 emit({"type": "done", "status": "failed", "rounds": round_num})
