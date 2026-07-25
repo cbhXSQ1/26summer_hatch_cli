@@ -1,6 +1,7 @@
 """CLI 入口"""
 
-import sys
+import os
+import json
 import click
 
 from hatch.core.llm import DeepSeekLLM, GLMLLM, ClaudeLLM
@@ -14,44 +15,21 @@ from hatch.tools.linter import Linter
 from hatch.tools.type_checker import TypeChecker
 from hatch.config.loader import ConfigLoader
 from hatch.security.key_manager import KeyManager
+from hatch.memory.session_manager import SessionManager
 
 
-@click.group()
-@click.version_option(version="0.1.0")
-def main() -> None:
-    """Hatch — Coding Agent Harness"""
-    pass
-
-
-@main.command()
-@click.argument("task")
-@click.option("--cwd", default=None, help="工作目录 (默认当前目录)")
-def run(task: str, cwd: str | None) -> None:
-    """执行 agent 任务"""
-    import os
-    if cwd:
-        os.makedirs(cwd, exist_ok=True)
-        os.chdir(cwd)
-        click.echo(f"工作目录: {os.getcwd()}")
-
-    config = ConfigLoader.load("hatch.yaml")
-    km = KeyManager()
-    api_key = km.get_key(config.llm.provider)
-
-    if not api_key:
-        click.echo(f"未找到 {config.llm.provider} 的 API Key，请先运行: hatch key set")
-        return
-
+def _build_llm(config, api_key):
     if config.llm.provider == "deepseek":
-        llm = DeepSeekLLM(api_key, model=config.llm.model)
+        return DeepSeekLLM(api_key, model=config.llm.model)
     elif config.llm.provider == "glm":
-        llm = GLMLLM(api_key, model=config.llm.model)
+        return GLMLLM(api_key, model=config.llm.model)
     elif config.llm.provider == "claude":
-        llm = ClaudeLLM(api_key, model=config.llm.model)
+        return ClaudeLLM(api_key, model=config.llm.model)
     else:
-        click.echo(f"不支持的 provider: {config.llm.provider}")
-        return
+        return None
 
+
+def _build_registry(config):
     registry = ToolRegistry()
     for tool_name in config.tools.enabled:
         if tool_name == "file_reader":
@@ -66,16 +44,133 @@ def run(task: str, cwd: str | None) -> None:
             registry.register(Linter())
         elif tool_name == "type_checker":
             registry.register(TypeChecker())
+    return registry
+
+
+@click.group()
+@click.version_option(version="0.1.0")
+def main() -> None:
+    """Hatch — Coding Agent Harness"""
+    pass
+
+
+@main.command()
+@click.argument("task")
+@click.option("--cwd", default=None, help="工作目录 (默认当前目录)")
+def run(task: str, cwd: str | None) -> None:
+    """执行 agent 任务"""
+    if cwd:
+        os.makedirs(cwd, exist_ok=True)
+        os.chdir(cwd)
+        click.echo(f"工作目录: {os.getcwd()}")
+
+    sm = SessionManager(os.getcwd())
+    session_id, is_new = sm.get_active_or_create(task)
+
+    if is_new:
+        click.echo(f"新对话: {session_id}")
+    else:
+        click.echo(f"继续对话: {session_id}")
+
+    config = ConfigLoader.load("hatch.yaml")
+    km = KeyManager()
+    api_key = km.get_key(config.llm.provider)
+
+    if not api_key:
+        click.echo(f"未找到 {config.llm.provider} 的 API Key，请先运行: hatch key set")
+        return
+
+    llm = _build_llm(config, api_key)
+    if llm is None:
+        click.echo(f"不支持的 provider: {config.llm.provider}")
+        return
+
+    registry = _build_registry(config)
 
     loop = AgentLoop()
-    state = loop.run(
-        task=task,
-        llm=llm,
-        registry=registry,
-        config=config,
-    )
+    state = loop.run(task=task, llm=llm, registry=registry, config=config)
+
+    sm.update_status(session_id, state.round, state.status)
+    sm.save_history(session_id, [
+        {"round": h.round_number, "success": h.success, "issues": h.total_issues}
+        for h in state.history
+    ])
 
     click.echo(f"\n任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
+
+
+@main.group()
+def session() -> None:
+    """会话管理"""
+    pass
+
+
+@session.command("new")
+@click.option("--cwd", default=None, help="工作目录")
+def session_new(cwd: str | None) -> None:
+    """创建新对话"""
+    if cwd:
+        os.chdir(cwd)
+    sm = SessionManager(os.getcwd())
+    sid = sm.create("新对话")
+    click.echo(f"新对话已创建: {sid}")
+
+
+@session.command("use")
+@click.argument("session_id")
+@click.option("--cwd", default=None, help="工作目录")
+def session_use(session_id: str, cwd: str | None) -> None:
+    """切换到指定对话"""
+    if cwd:
+        os.chdir(cwd)
+    sm = SessionManager(os.getcwd())
+    try:
+        sm.activate(session_id)
+        click.echo(f"已切换到对话: {session_id}")
+    except ValueError:
+        click.echo(f"会话 {session_id} 不存在，请使用 'hatch session list' 查看")
+
+
+@session.command("list")
+@click.option("--cwd", default=None, help="工作目录")
+def session_list(cwd: str | None) -> None:
+    """列出所有对话"""
+    if cwd:
+        os.chdir(cwd)
+    sm = SessionManager(os.getcwd())
+    sessions = sm.list_sessions()
+    active = sm.get_active()
+
+    if not sessions:
+        click.echo("暂无对话记录")
+        return
+
+    for s in sessions:
+        marker = " *" if s["id"] == active else ""
+        click.echo(f"  {s['id']}{marker}")
+        click.echo(f"    任务: {s['task']}")
+        click.echo(f"    轮次: {s['rounds']}  状态: {s['status']}")
+        click.echo(f"    更新: {s['updated']}")
+        click.echo()
+
+
+@session.command("info")
+@click.option("--cwd", default=None, help="工作目录")
+def session_info(cwd: str | None) -> None:
+    """查看当前对话信息"""
+    if cwd:
+        os.chdir(cwd)
+    sm = SessionManager(os.getcwd())
+    sid = sm.get_active()
+    if sid is None:
+        click.echo("无活跃对话，请先运行 'hatch run' 或 'hatch session new'")
+        return
+    info = sm.get_info(sid)
+    click.echo(f"会话 ID: {info['id']}")
+    click.echo(f"任务:     {info['task']}")
+    click.echo(f"创建:     {info['created']}")
+    click.echo(f"轮次:     {info['rounds']}")
+    click.echo(f"状态:     {info['status']}")
 
 
 @main.group()

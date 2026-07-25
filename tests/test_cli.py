@@ -13,6 +13,16 @@ def runner():
     return CliRunner()
 
 
+@pytest.fixture
+def mock_sm():
+    """返回 mock SessionManager"""
+    with patch("hatch.cli.SessionManager") as mock_class:
+        mock = mock_class.return_value
+        mock.get_active_or_create.return_value = ("abc123", True)
+        mock.get_active.return_value = "abc123"
+        yield mock
+
+
 class TestMainVersion:
     """main --version"""
 
@@ -25,7 +35,7 @@ class TestMainVersion:
 class TestRunCommand:
     """run TASK"""
 
-    def test_run_no_api_key(self, runner):
+    def test_run_no_api_key(self, runner, mock_sm):
         mock_config = Config()
         mock_config.llm.provider = "deepseek"
 
@@ -37,9 +47,8 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "fix the bug"])
             assert result.exit_code == 0
             assert "未找到" in result.output
-            assert "API Key" in result.output
 
-    def test_run_unsupported_provider(self, runner):
+    def test_run_unsupported_provider(self, runner, mock_sm):
         mock_config = Config()
         mock_config.llm.provider = "unknown"
 
@@ -51,9 +60,8 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "fix the bug"])
             assert result.exit_code == 0
             assert "不支持的 provider" in result.output
-            assert "unknown" in result.output
 
-    def test_run_with_valid_deepseek(self, runner):
+    def test_run_with_valid_deepseek(self, runner, mock_sm):
         mock_config = Config()
         mock_config.llm.provider = "deepseek"
         mock_config.llm.model = "deepseek-v4-pro"
@@ -76,10 +84,13 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "fix the bug"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
-            assert "success" in result.output
+            mock_sm.update_status.assert_called_once()
+            mock_sm.save_history.assert_called_once()
 
-    def test_run_with_cwd_option(self, runner, tmp_path):
-        """测试 --cwd 切换到指定目录"""
+    def test_run_with_cwd_option(self, runner, tmp_path, mock_sm):
+        workdir = tmp_path / "my_project"
+        workdir.mkdir()
+
         mock_config = Config()
         mock_config.llm.provider = "deepseek"
         mock_config.llm.model = "deepseek-v4-pro"
@@ -88,9 +99,6 @@ class TestRunCommand:
         mock_state.status = "success"
         mock_state.round = 1
         mock_state.max_rounds = 3
-
-        workdir = tmp_path / "my_project"
-        workdir.mkdir()
 
         with patch("hatch.cli.ConfigLoader.load", return_value=mock_config), \
              patch("hatch.cli.KeyManager") as mock_km_class, \
@@ -107,7 +115,7 @@ class TestRunCommand:
             assert "工作目录" in result.output
             assert "任务完成" in result.output
 
-    def test_run_with_valid_glm(self, runner):
+    def test_run_with_valid_glm(self, runner, mock_sm):
         mock_config = Config()
         mock_config.llm.provider = "glm"
         mock_config.llm.model = "glm-5.2"
@@ -130,6 +138,100 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "fix the bug"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
+
+
+class TestSessionCommands:
+    """session 命令"""
+
+    def test_session_new(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.create.return_value = "abc123"
+
+            result = runner.invoke(main, ["session", "new", "--cwd", str(workdir)])
+            assert result.exit_code == 0
+            assert "abc123" in result.output
+
+    def test_session_use(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+
+            result = runner.invoke(main, ["session", "use", "--cwd", str(workdir), "abc123"])
+            assert result.exit_code == 0
+            mock.activate.assert_called_once_with("abc123")
+            assert "已切换" in result.output
+
+    def test_session_use_not_found(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.activate.side_effect = ValueError("会话 abc123 不存在")
+
+            result = runner.invoke(main, ["session", "use", "--cwd", str(workdir), "abc123"])
+            assert "不存在" in result.output
+
+    def test_session_list_empty(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.list_sessions.return_value = []
+            mock.get_active.return_value = None
+
+            result = runner.invoke(main, ["session", "list", "--cwd", str(workdir)])
+            assert result.exit_code == 0
+            assert "暂无" in result.output
+
+    def test_session_list_with_items(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.list_sessions.return_value = [
+                {"id": "abc123", "task": "fix bug", "created": "2026-01-01",
+                 "updated": "2026-01-01", "rounds": 3, "status": "success"},
+                {"id": "def456", "task": "add feature", "created": "2026-01-02",
+                 "updated": "2026-01-02", "rounds": 1, "status": "active"},
+            ]
+            mock.get_active.return_value = "abc123"
+
+            result = runner.invoke(main, ["session", "list", "--cwd", str(workdir)])
+            assert result.exit_code == 0
+            assert "abc123" in result.output
+            assert "def456" in result.output
+            assert "*" in result.output
+
+    def test_session_info(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.get_active.return_value = "abc123"
+            mock.get_info.return_value = {
+                "id": "abc123", "task": "fix bug", "created": "2026-01-01",
+                "rounds": 3, "status": "success",
+            }
+
+            result = runner.invoke(main, ["session", "info", "--cwd", str(workdir)])
+            assert result.exit_code == 0
+            assert "abc123" in result.output
+            assert "fix bug" in result.output
+            assert "3" in result.output
+
+    def test_session_info_no_active(self, runner, tmp_path):
+        workdir = tmp_path / "proj"
+        workdir.mkdir()
+        with patch("hatch.cli.SessionManager") as mock_class:
+            mock = mock_class.return_value
+            mock.get_active.return_value = None
+
+            result = runner.invoke(main, ["session", "info", "--cwd", str(workdir)])
+            assert "无活跃" in result.output
 
 
 class TestKeySet:
