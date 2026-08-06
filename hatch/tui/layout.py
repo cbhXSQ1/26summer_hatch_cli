@@ -1,10 +1,11 @@
 """Build prompt_toolkit Layout for Hatch TUI."""
 
 from prompt_toolkit.layout import Layout, HSplit, Window
+from prompt_toolkit.layout.containers import Float, FloatContainer
 from prompt_toolkit.layout.controls import FormattedTextControl, BufferControl
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.formatted_text import FormattedText
-from hatch.tui.widgets import FocusableText, ConversationLog
+from hatch.tui.widgets import FocusableText, ConversationLog, DropdownMenu
 
 
 def build_layout(
@@ -15,6 +16,8 @@ def build_layout(
     model_text: FocusableText,
     key_text: FocusableText,
     input_buffer: Buffer,
+    model_dropdown: DropdownMenu | None = None,
+    sessions_dropdown: DropdownMenu | None = None,
 ) -> Layout:
     separator = Window(height=1, content=FormattedTextControl(
         FormattedText([("class:separator", "-" * 80)])
@@ -33,6 +36,14 @@ def build_layout(
         conversation_log.__pt_container__(),
         separator, input_window, separator, toolbar,
     ])
+
+    floats = []
+    for dd in (model_dropdown, sessions_dropdown):
+        if dd is not None:
+            floats.append(Float(content=dd.__pt_container__(), top=0, left=0))
+    if floats:
+        root = FloatContainer(root, floats=floats)
+
     return Layout(root, focused_element=input_window)
 
 

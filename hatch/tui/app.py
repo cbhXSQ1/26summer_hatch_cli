@@ -58,7 +58,7 @@ class HatchChatApp:
             ],
             title="Select Model",
         )
-        self.sessions_dropdown: DropdownMenu | None = None
+        self.sessions_dropdown = DropdownMenu(items=[], title="Sessions")
 
         # Focus state
         self._focus: str = "input"
@@ -88,8 +88,7 @@ class HatchChatApp:
             on_arrow=self._on_arrow,
             cancel_dropdown=self._cancel_dropdown,
             is_dropdown_open=lambda: (
-                self.model_dropdown.visible or
-                (self.sessions_dropdown is not None and self.sessions_dropdown.visible)
+                self.model_dropdown.visible or self.sessions_dropdown.visible
             ),
             submit_task=self._submit_task,
         )
@@ -103,6 +102,8 @@ class HatchChatApp:
             model_text=self.model_text,
             key_text=self.key_text,
             input_buffer=self.input_buffer,
+            model_dropdown=self.model_dropdown,
+            sessions_dropdown=self.sessions_dropdown,
         )
 
         # Build app
@@ -181,7 +182,8 @@ class HatchChatApp:
             self.sessions_dropdown.hide()
         else:
             items = [(s.get("task", s["id"])[:20], s["id"]) for s in sessions]
-            self.sessions_dropdown = DropdownMenu(items=items, title="Sessions")
+            self.sessions_dropdown.items = items
+            self.sessions_dropdown.selected_index = 0
             self.sessions_dropdown.show()
         self.app.invalidate()
 
@@ -198,6 +200,8 @@ class HatchChatApp:
             model_text=self.model_text,
             key_text=self.key_text,
             input_buffer=self.input_buffer,
+            model_dropdown=self.model_dropdown,
+            sessions_dropdown=self.sessions_dropdown,
         )
         self.app.layout = self.layout
         self._is_first_reply = True
@@ -240,6 +244,8 @@ class HatchChatApp:
                 model_text=self.model_text,
                 key_text=self.key_text,
                 input_buffer=self.input_buffer,
+                model_dropdown=self.model_dropdown,
+                sessions_dropdown=self.sessions_dropdown,
             )
             self.app.layout = self.layout
             self.app.invalidate()
