@@ -452,4 +452,24 @@ worktree 1: T7.1 → T7.2 → T8.1 → T8.2 → T8.3 → T8.4 → T8.5
 | T8.3 | ✅ | `0d563ac` | |
 | T8.4 | ✅ | `9437837` | |
 | T8.5 | ✅ | `2234ba4` | |
-| **总测试** | **233/233** | — | 含 CLI 17 + 工具 33 + 反馈 36 + 护栏 11 + LLM 5 + 循环 6 + 记忆 6 |
+| **总测试** | **273/273** | — | 含 TUI 22 + CLI 17 + 工具 33 + 反馈 36 + 护栏 11 + LLM 5 + 循环 6 + 记忆 6 |
+
+## Phase 9: TUI 交互界面（prompt_toolkit）
+
+> 2026-08-06 新增。构建键盘驱动的终端交互界面：流式输出、底部工具栏、下拉菜单、自动命名。
+
+| 任务 | 状态 | Commit | 说明 |
+|------|------|--------|------|
+| TU.1 | ✅ | `50efb26` | prompt_toolkit 依赖 + tui 包骨架 |
+| TU.2 | ✅ | `e6395dc` | TUIEvent dataclasses（8 种事件 + ToolbarSection） |
+| TU.3 | ✅ | `b20424d` | FocusableText widget（焦点高亮） |
+| TU.4 | ✅ | `b6696f2` | ConversationLog + DropdownMenu widgets |
+| TU.5 | ✅ | `4898628` | Keybindings（Tab 焦点循环 / Enter 激活 / Esc 关闭 / 方向键导航） |
+| TU.6 | ✅ | `ed05d64` | 异步 agent runner（executor 线程 + asyncio.Queue） |
+| TU.7 | ✅ | `256c4bb` | auto_name() 低温度命名 + LLM.complete 加 temperature 参数 |
+| TU.8 | ✅ | `91e004b` | SessionManager.rename() |
+| TU.9 | ✅ | `e181a5b` | Layout builder（对话区 + 输入栏 + 底部工具栏） |
+| TU.10 | ✅ | `04f6222` | HatchChatApp 主类（含 FloatContainer dropdown 修复） |
+| TU.11 | ✅ | `a73d491` | CLI `hatch chat` 命令 |
+| TU.12 | ✅ | `5cf5021` | TUI 冒烟测试 |
+| 终审修复 | ✅ | `70c9cf4` `a5cb273` | 内联重命名 / 空菜单保护 / 日志自动滚动 / 忙时守卫 / 模型切换回归 |
