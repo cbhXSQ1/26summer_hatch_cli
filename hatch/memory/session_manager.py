@@ -98,6 +98,15 @@ class SessionManager:
                 break
         self._write_index(index)
 
+    def rename(self, session_id: str, new_name: str) -> None:
+        index = self._read_index()
+        for e in index:
+            if e["id"] == session_id:
+                e["task"] = new_name[:100]
+                e["updated"] = datetime.now().isoformat()
+                break
+        self._write_index(index)
+
     def get_conversation_turns(self, session_id: str, limit: int = 10) -> list[dict]:
         path = self._session_path(session_id)
         if not path.exists():

@@ -89,3 +89,13 @@ class TestSessionMemory:
         mem.set("Task", "Python")
         result = mem.get_relevant_context("python")
         assert "Task: Python" in result
+
+
+class TestSessionManager:
+    def test_rename_session(self, tmp_path):
+        from hatch.memory.session_manager import SessionManager
+        sm = SessionManager(str(tmp_path))
+        sid = sm.create("original")
+        sm.rename(sid, "renamed")
+        info = sm.get_info(sid)
+        assert info["task"] == "renamed"
