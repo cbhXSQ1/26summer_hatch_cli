@@ -31,3 +31,127 @@ class FocusableText:
             dont_extend_width=True,
             dont_extend_height=True,
         )
+
+
+from prompt_toolkit.formatted_text import to_formatted_text
+from hatch.tui.events import (
+    StreamChunk, ToolCall, ToolResult, Feedback,
+    RoundStart, RoundEnd, Done, Warning
+)
+
+
+class ConversationLog:
+    """Scrollable conversation history area."""
+
+    def __init__(self, max_lines: int = 500) -> None:
+        self._lines: list[str] = []
+        self.max_lines = max_lines
+
+    def append_event(self, event) -> None:
+        text = self._format(event)
+        if text:
+            for line in text.split("\n"):
+                self._lines.append(line)
+        if len(self._lines) > self.max_lines:
+            self._lines = self._lines[-self.max_lines:]
+
+    def _format(self, event) -> str:
+        t = event.type
+        if t == "stream_chunk":
+            return event.text
+        elif t == "round_start":
+            return f"\n  Round {event.round}/{event.max_rounds}"
+        elif t == "tool_call":
+            return f"  >> {event.name}({_short_params(event.params)})"
+        elif t == "tool_result":
+            status = "OK" if event.success else "FAIL"
+            detail = event.output[:80].replace("\n", " ") if event.output else ""
+            return f"  << {event.name} [{status}] {detail}"
+        elif t == "feedback":
+            if event.success:
+                return "  All checks passed"
+            else:
+                return f"  Feedback: {event.issues} issue(s)"
+        elif t == "round_end":
+            return "  ---" if not event.all_ok else ""
+        elif t == "done":
+            status = event.status
+            rounds = event.rounds
+            if status == "success":
+                return f"\n  Task complete ({rounds} round)"
+            elif status == "failed":
+                return f"\n  Task failed ({rounds} round)"
+            else:
+                return f"\n  Stopped ({rounds} round)"
+        elif t == "warning":
+            return f"  Warning: {event.msg}"
+        return ""
+
+    def get_text(self) -> str:
+        return "\n".join(self._lines)
+
+    def __pt_container__(self):
+        return Window(
+            content=FormattedTextControl(
+                text=lambda: to_formatted_text(self.get_text()),
+            ),
+            wrap_lines=True,
+            always_hide_cursor=True,
+        )
+
+
+def _short_params(params: dict) -> str:
+    parts = []
+    for k, v in list(params.items())[:2]:
+        s = str(v)[:40]
+        parts.append(f"{k}={s}")
+    return ", ".join(parts)
+
+
+class DropdownMenu:
+    """Float dropdown list for More/Model selection. Keyboard-navigable."""
+
+    def __init__(self, items: list[tuple[str, str]], title: str = "") -> None:
+        """
+        items: list of (display_label, value)
+        """
+        self.items = items
+        self.title = title
+        self.selected_index = 0
+        self.visible = False
+
+    def show(self) -> None:
+        self.visible = True
+        self.selected_index = 0
+
+    def hide(self) -> None:
+        self.visible = False
+
+    def move_up(self) -> None:
+        self.selected_index = (self.selected_index - 1) % len(self.items)
+
+    def move_down(self) -> None:
+        self.selected_index = (self.selected_index + 1) % len(self.items)
+
+    def get_selected(self) -> tuple[str, str]:
+        return self.items[self.selected_index]
+
+    def _get_formatted_lines(self) -> list:
+        lines = []
+        if self.title:
+            lines.append(("bold", f"  {self.title}"))
+        for i, (label, _) in enumerate(self.items):
+            if i == self.selected_index:
+                lines.append(("reverse", f"> {label}"))
+            else:
+                lines.append(("", f"  {label}"))
+        return lines
+
+    def __pt_container__(self):
+        return Window(
+            content=FormattedTextControl(
+                text=lambda: self._get_formatted_lines() if self.visible else [],
+            ),
+            dont_extend_width=True,
+            dont_extend_height=True,
+        )
