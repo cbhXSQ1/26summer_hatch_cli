@@ -338,5 +338,45 @@ def config_validate() -> None:
         click.echo(f"配置文件错误: {e}")
 
 
+@main.command("chat")
+@click.option("--cwd", default=None, help="Working directory")
+def chat_command(cwd: str | None) -> None:
+    """Start interactive TUI chat."""
+    import asyncio
+    if cwd:
+        os.makedirs(cwd, exist_ok=True)
+        os.chdir(cwd)
+
+    workdir = os.getcwd()
+    config = ConfigLoader.load("hatch.yaml")
+    km = KeyManager()
+    api_key = km.get_key(config.llm.provider)
+
+    if not api_key:
+        click.echo(f"No API key for {config.llm.provider}. Run: hatch key set")
+        return
+
+    llm = _build_llm(config, api_key)
+    if llm is None:
+        click.echo(f"Unsupported provider: {config.llm.provider}")
+        return
+
+    sm = SessionManager(workdir)
+    session_id, is_new = sm.get_latest_or_create("新对话")
+    info = sm.get_info(session_id)
+    session_name = info["task"] if info else "新对话"
+
+    from hatch.tui.app import HatchChatApp
+    app = HatchChatApp(
+        workdir=workdir,
+        llm=llm,
+        config=config,
+        session_manager=sm,
+        session_id=session_id,
+        session_name=session_name,
+    )
+    asyncio.run(app.run())
+
+
 if __name__ == "__main__":
     main()
