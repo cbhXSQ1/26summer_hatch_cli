@@ -52,6 +52,13 @@ class TestConversationLog:
         text = log.get_text()
         assert "test_runner" in text
 
+    def test_autofollow_cursor_fragment(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=10)
+        log.append_event(StreamChunk(text="hello"))
+        fragments = log.__pt_container__().content.text()
+        assert fragments[-1] == ("[SetCursorPosition]", "")
+
 
 class TestDropdownMenu:
     def test_creates_with_items(self):
@@ -80,3 +87,9 @@ class TestDropdownMenu:
         label, value = menu.get_selected()
         assert label == "glm"
         assert value == "glm"
+
+    def test_empty_menu_move_no_crash(self):
+        menu = DropdownMenu(items=[])
+        menu.move_up()
+        menu.move_down()
+        assert menu.selected_index == 0

@@ -73,6 +73,7 @@ class HatchChatApp:
         self._is_first_reply = True
         self._first_task = ""
         self._first_reply_collected = ""
+        self._pending_rename = False
 
         # Input buffer
         self.input_buffer = Buffer(multiline=False)
@@ -146,6 +147,12 @@ class HatchChatApp:
         self.app.invalidate()
 
     def _cancel_dropdown(self) -> None:
+        if self._pending_rename:
+            self._pending_rename = False
+            self.input_buffer.text = ""
+            self._set_focus("input")
+            self.app.invalidate()
+            return
         if self.model_dropdown.visible:
             self.model_dropdown.hide()
         if self.sessions_dropdown and self.sessions_dropdown.visible:
@@ -156,18 +163,22 @@ class HatchChatApp:
     def _toggle_model_dropdown(self) -> None:
         if self.model_dropdown.visible:
             label, provider = self.model_dropdown.get_selected()
-            self.model_text.update_text(f"{provider}/{label}")
-            self.config.llm.provider = provider
-            self.config.llm.model = label
-            # Rebuild LLM instance
             from hatch.cli import _build_llm
             from hatch.security.key_manager import KeyManager
             km = KeyManager()
             api_key = km.get_key(provider)
-            if api_key:
-                new_llm = _build_llm(self.config, api_key)
-                if new_llm:
-                    self.llm = new_llm
+            new_llm = _build_llm(self.config, api_key) if api_key else None
+            if not new_llm:
+                self.conv_log._lines.append(
+                    f"  No API key for {provider} — model unchanged"
+                )
+                self.model_dropdown.hide()
+                self.app.invalidate()
+                return
+            self.llm = new_llm
+            self.model_text.update_text(f"{provider}/{label}")
+            self.config.llm.provider = provider
+            self.config.llm.model = label
             self.model_dropdown.hide()
         else:
             self.model_dropdown.show()
@@ -205,22 +216,14 @@ class HatchChatApp:
         )
         self.app.layout = self.layout
         self._is_first_reply = True
+        self._first_task = ""
+        self._first_reply_collected = ""
 
     def _start_rename(self) -> None:
-        # Use prompt_toolkit's input dialog or simple inline rename
-        # For simplicity, use a modal input
-        from prompt_toolkit.shortcuts import input_dialog
-        async def _do_rename():
-            new_name = await input_dialog(
-                title="Rename",
-                text="Enter new name:",
-            ).run_async()
-            if new_name:
-                self.session_manager.rename(self.session_id, new_name)
-                self.session_name = new_name
-                self.session_text.update_text(new_name[:15])
-                self.app.invalidate()
-        asyncio.ensure_future(_do_rename())
+        self._pending_rename = True
+        self.input_buffer.text = self.session_name
+        self._set_focus("input")
+        self.app.invalidate()
 
     def _change_directory(self) -> None:
         import tkinter.filedialog as fd
@@ -248,6 +251,9 @@ class HatchChatApp:
                 sessions_dropdown=self.sessions_dropdown,
             )
             self.app.layout = self.layout
+            self._is_first_reply = True
+            self._first_task = ""
+            self._first_reply_collected = ""
             self.app.invalidate()
 
     def _show_key_status(self) -> None:
@@ -262,7 +268,20 @@ class HatchChatApp:
         self.app.invalidate()
 
     def _submit_task(self, text: str) -> None:
+        if self._pending_rename:
+            name = text.strip() or self.session_name
+            self.session_manager.rename(self.session_id, name)
+            self.session_name = name
+            self.session_text.update_text(name[:15])
+            self._pending_rename = False
+            self.input_buffer.text = ""
+            self.app.invalidate()
+            return
         if not text.strip():
+            return
+        if self._running_task is not None and not self._running_task.done():
+            self.conv_log._lines.append("  Busy — wait for the current task")
+            self.app.invalidate()
             return
         task = text.strip()
         self.input_buffer.text = ""
@@ -300,18 +319,18 @@ class HatchChatApp:
             # Check if first reply for auto-naming
             if self._is_first_reply and self._first_reply_collected:
                 self._is_first_reply = False
-                name_task = asyncio.ensure_future(self._auto_name())
+                name_task = asyncio.create_task(self._auto_name())
             else:
                 self._is_first_reply = False
 
             self._set_focus("input")
             self.app.invalidate()
 
-        self._running_task = asyncio.ensure_future(_run())
+        self._running_task = asyncio.create_task(_run())
         # Start event processor if not already running
         if not hasattr(self, '_event_processor_started'):
             self._event_processor_started = True
-            asyncio.ensure_future(self._process_events())
+            asyncio.create_task(self._process_events())
 
     async def _process_events(self) -> None:
         """Continuously drain event queue and update display."""

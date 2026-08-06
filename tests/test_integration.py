@@ -183,3 +183,42 @@ class TestTUI:
 
         layout = build_layout(log, cwd, session, more, model, key, buf)
         assert layout is not None
+
+    def test_submit_busy_guard(self, tmp_path):
+        """Submit while a task is running must not start a new run."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+
+        loop = asyncio.new_event_loop()
+        app._running_task = loop.create_future()
+
+        app.input_buffer.text = "x"
+        with patch("hatch.tui.app.run_agent_async") as mock_run:
+            app._submit_task("x")
+            mock_run.assert_not_called()
+
+        assert app.input_buffer.text == "x"
+        assert "Busy" in app.conv_log.get_text()

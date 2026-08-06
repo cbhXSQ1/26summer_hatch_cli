@@ -11,7 +11,7 @@ class LLMBackend(ABC):
     """LLM 后端抽象基类"""
 
     @abstractmethod
-    def complete(self, messages: list[dict]) -> str:
+    def complete(self, messages: list[dict], temperature: float | None = None) -> str:
         """发送消息列表，返回 LLM 响应"""
         ...
 

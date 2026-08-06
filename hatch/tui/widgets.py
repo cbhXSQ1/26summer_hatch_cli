@@ -91,10 +91,11 @@ class ConversationLog:
         return "\n".join(self._lines)
 
     def __pt_container__(self):
+        def _text():
+            return to_formatted_text(self.get_text()) + [("[SetCursorPosition]", "")]
+
         return Window(
-            content=FormattedTextControl(
-                text=lambda: to_formatted_text(self.get_text()),
-            ),
+            content=FormattedTextControl(text=_text),
             wrap_lines=True,
             always_hide_cursor=True,
         )
@@ -128,9 +129,13 @@ class DropdownMenu:
         self.visible = False
 
     def move_up(self) -> None:
+        if not self.items:
+            return
         self.selected_index = (self.selected_index - 1) % len(self.items)
 
     def move_down(self) -> None:
+        if not self.items:
+            return
         self.selected_index = (self.selected_index + 1) % len(self.items)
 
     def get_selected(self) -> tuple[str, str]:
