@@ -42,7 +42,7 @@ class TestAgentRunner:
                 events.append(queue.get_nowait())
 
             assert len(events) > 0
-            assert events[0]["type"] == "round_start"
+            assert events[-1].get("_done") is True
 
     @pytest.mark.asyncio
     async def test_marks_done_on_completion(self):

@@ -27,8 +27,6 @@ async def run_agent_async(
             pass
 
     def _run() -> None:
-        event_queue.put_nowait({"type": "round_start", "round": 1,
-                                "max_rounds": config.loop.max_rounds})
         loop = AgentLoop()
         state = loop.run(
             task=task,
