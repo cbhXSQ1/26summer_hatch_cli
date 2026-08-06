@@ -133,3 +133,53 @@ class TestEndToEnd:
         summary2 = engine.process(action2, result2, 2)
         assert summary2.success is True
         assert summary2.total_issues == 0
+
+
+class TestTUI:
+    def test_app_constructs_without_error(self, tmp_path):
+        """Smoke test: HatchChatApp constructs without crash."""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+
+        # Patch create_output so prompt_toolkit doesn't probe the Windows
+        # console (no console exists under pytest on headless/CI shells).
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+        assert app.app is not None
+        assert app.conv_log is not None
+
+    def test_layout_builds_without_error(self, tmp_path):
+        """Smoke test: build_layout returns valid Layout."""
+        from hatch.tui.layout import build_layout
+        from hatch.tui.widgets import FocusableText, ConversationLog
+        from prompt_toolkit.buffer import Buffer
+
+        log = ConversationLog()
+        cwd = FocusableText("test")
+        session = FocusableText("session")
+        more = FocusableText("...")
+        model = FocusableText("model")
+        key = FocusableText("key")
+        buf = Buffer()
+
+        layout = build_layout(log, cwd, session, more, model, key, buf)
+        assert layout is not None
