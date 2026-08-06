@@ -167,7 +167,19 @@ class HatchChatApp:
             from hatch.security.key_manager import KeyManager
             km = KeyManager()
             api_key = km.get_key(provider)
-            new_llm = _build_llm(self.config, api_key) if api_key else None
+            if not api_key:
+                self.conv_log._lines.append(
+                    f"  No API key for {provider} — model unchanged"
+                )
+                self.model_dropdown.hide()
+                self.app.invalidate()
+                return
+            import copy
+            cand = copy.copy(self.config)
+            cand.llm = copy.copy(self.config.llm)
+            cand.llm.provider = provider
+            cand.llm.model = label
+            new_llm = _build_llm(cand, api_key)
             if not new_llm:
                 self.conv_log._lines.append(
                     f"  No API key for {provider} — model unchanged"

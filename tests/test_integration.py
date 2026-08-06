@@ -222,3 +222,50 @@ class TestTUI:
 
         assert app.input_buffer.text == "x"
         assert "Busy" in app.conv_log.get_text()
+
+    def test_model_switch_builds_with_new_config(self, tmp_path):
+        """Model switch must build the LLM from the new provider/model."""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+
+        app.model_dropdown.items = [("glm-5.2", "glm")]
+        app.model_dropdown.selected_index = 0
+        app.model_dropdown.show()
+
+        sentinel = object()
+
+        with patch("hatch.cli._build_llm", return_value=sentinel) as mock_build, \
+             patch("hatch.security.key_manager.KeyManager") as mock_km_class:
+            mock_km_class.return_value.get_key.return_value = "sk-test"
+            app._toggle_model_dropdown()
+
+        assert mock_build.called
+        passed = mock_build.call_args
+        passed_config = passed[0][0] if passed.args else passed.kwargs["config"]
+        assert passed_config.llm.provider == "glm"
+        assert passed_config.llm.model == "glm-5.2"
+        assert app.config.llm.provider == "glm"
+        assert app.config.llm.model == "glm-5.2"
+        assert app.llm is sentinel
