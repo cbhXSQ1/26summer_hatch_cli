@@ -43,7 +43,7 @@ class OpenAICompatLLM(LLMBackend):
         self.base_url = base_url
         self.model = model
 
-    def complete(self, messages: list[dict]) -> str:
+    def complete(self, messages: list[dict], temperature: float | None = None) -> str:
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -53,6 +53,8 @@ class OpenAICompatLLM(LLMBackend):
             "model": self.model,
             "messages": messages,
         }
+        if temperature is not None:
+            body["temperature"] = temperature
         with httpx.Client(timeout=60) as client:
             response = client.post(url, headers=headers, content=json.dumps(body))
             response.raise_for_status()
@@ -111,7 +113,7 @@ class ClaudeLLM(LLMBackend):
         self.api_key = api_key
         self.model = model
 
-    def complete(self, messages: list[dict]) -> str:
+    def complete(self, messages: list[dict], temperature: float | None = None) -> str:
         url = "https://api.anthropic.com/v1/messages"
         headers = {
             "x-api-key": self.api_key,
@@ -123,6 +125,8 @@ class ClaudeLLM(LLMBackend):
             "max_tokens": 4096,
             "messages": messages,
         }
+        if temperature is not None:
+            body["temperature"] = temperature
         with httpx.Client(timeout=60) as client:
             response = client.post(url, headers=headers, content=json.dumps(body))
             response.raise_for_status()
