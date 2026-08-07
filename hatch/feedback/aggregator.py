@@ -29,7 +29,7 @@ class FeedbackAggregator:
 
         parts: list[str] = []
         if success:
-            parts.append("所有检查通过，任务完成。")
+            parts.append("执行成功，未发现问题。")
         else:
             parts.append(f"发现 {total_issues} 个问题:")
             for f in top_issues:

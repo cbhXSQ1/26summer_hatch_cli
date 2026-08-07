@@ -60,6 +60,7 @@ class TestAgentLoop:
             f"""```json
 [{{"tool_name": "file_reader", "parameters": {{"path": "{file_path}"}}}}]
 ```""",
+            "```json\n[]\n```",  # 收尾：无更多动作
         ])
         registry = ToolRegistry()
         registry.register(FileReader())
@@ -71,6 +72,7 @@ class TestAgentLoop:
             config=Config(),
         )
         assert state.status == "success"
+        assert state.round == 2
 
     def test_stops_on_max_rounds(self) -> None:
         from hatch.core.llm import MockLLM
@@ -188,6 +190,7 @@ class TestAgentLoop:
             f"""```json
 [{{"tool_name": "file_reader", "parameters": {{"path": "{file_path}"}}}}]
 ```""",
+            "```json\n[]\n```",
         ])
         registry = ToolRegistry()
         registry.register(FileReader())
@@ -239,6 +242,7 @@ class TestAgentLoop:
 [{{"tool_name": "file_reader", "parameters": {{"path": "{p1}"}}}},
  {{"tool_name": "file_reader", "parameters": {{"path": "{p2}"}}}}]
 ```""",
+            "```json\n[]\n```",
         ])
         registry = ToolRegistry()
         registry.register(FileReader())
@@ -270,10 +274,11 @@ class TestAgentLoop:
             f"""```json
 [{{"tool_name": "file_reader", "parameters": {{"path": "{ok_path}"}}}}]
 ```""",
+            "```json\n[]\n```",
         ])
         registry = ToolRegistry()
         registry.register(FileReader())
-        config = Config(loop=LoopConfig(max_rounds=2))
+        config = Config(loop=LoopConfig(max_rounds=3))
         state = AgentLoop().run(
             task="read the file",
             llm=llm,
@@ -281,4 +286,57 @@ class TestAgentLoop:
             config=config,
         )
         assert state.status == "success"
-        assert state.round == 2
+        assert state.round == 3
+
+    def test_consecutive_calls_across_rounds(self, tmp_path) -> None:
+        """多步任务：跨轮连续调用（dir → read），观察结果回灌下一轮。"""
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.file_reader import FileReader
+        from hatch.tools.shell_executor import ShellExecutor
+        from hatch.config.loader import Config
+
+        target = tmp_path / "app.py"
+        target.write_text("print('hi')", encoding="utf-8")
+        target_path = str(target).replace("\\", "/")
+
+        class RecordingLLM(MockLLM):
+            def __init__(self, responses, capture):
+                super().__init__(responses)
+                self.capture = capture
+
+            def complete(self, messages):
+                self.capture.append([dict(m) for m in messages])
+                return super().complete(messages)
+
+        captured: list[list[dict]] = []
+        llm = RecordingLLM([
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "echo hello"}}]
+```""",
+            f"""```json
+[{{"tool_name": "file_reader", "parameters": {{"path": "{target_path}"}}}}]
+```""",
+            "```json\n[]\n```",
+        ], captured)
+        registry = ToolRegistry()
+        registry.register(ShellExecutor())
+        registry.register(FileReader())
+        state = AgentLoop().run(
+            task="inspect the project",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        # 三轮：shell → file_reader → 收尾
+        assert state.status == "success"
+        assert state.round == 3
+        assert len(state.history) == 2
+        # 第二轮消息必须包含第一轮的工具观察结果
+        round2_msgs = " ".join(m["content"] for m in captured[1])
+        assert "echo hello" in round2_msgs or "shell_executor" in round2_msgs
+        assert "成功" in round2_msgs or "hello" in round2_msgs
+        # 第三轮（收尾）消息包含第二轮读取内容
+        round3_msgs = " ".join(m["content"] for m in captured[2])
+        assert "print('hi')" in round3_msgs

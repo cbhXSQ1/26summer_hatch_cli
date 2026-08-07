@@ -11,6 +11,7 @@ class ContextBuilder:
         feedback: str = "",
         memory: str = "",
         conversation_history: list[dict] | None = None,
+        observations: str = "",
     ) -> list[dict]:
         system_prompt = f"""You are a helpful coding agent. You have access to the following tools:
 
@@ -45,6 +46,12 @@ Here is your answer. The function works correctly.
         if conversation_history:
             for turn in conversation_history:
                 messages.append({"role": turn["role"], "content": turn["content"]})
+
+        if observations:
+            messages.append({
+                "role": "user",
+                "content": f"上一轮工具执行结果:\n{observations}",
+            })
 
         if feedback:
             messages.append({"role": "user", "content": f"Previous attempt feedback:\n{feedback}"})

@@ -32,7 +32,7 @@ class LLMConfig:
 
 @dataclass
 class LoopConfig:
-    max_rounds: int = 3
+    max_rounds: int = 6
     max_total_tokens: int = 100000
 
 

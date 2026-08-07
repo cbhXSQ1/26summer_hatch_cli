@@ -37,6 +37,8 @@ def main() -> None:
 [{"tool_name": "file_writer", "parameters": {"path": "test_demo.py", "content": "def test_pass():\\n    assert 1 == 1"}},
 {"tool_name": "test_runner", "parameters": {"path": "test_demo.py"}}]
 ```""",
+            # Round 4: 收尾
+            "```json\n[]\n```",
         ])
 
         registry = ToolRegistry()

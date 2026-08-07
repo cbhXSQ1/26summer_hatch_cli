@@ -12,9 +12,17 @@ from hatch.feedback.engine import FeedbackEngine
 from hatch.memory.session import SessionMemory
 from hatch.config.loader import Config
 
+OBS_LINE_LIMIT = 20
+
 
 class AgentLoop:
-    """Agent 主循环"""
+    """Agent 主循环
+
+    语义：LLM 每轮决定要做什么；工具调用成功 ≠ 任务完成。
+    只有 LLM 不再产生动作（文本收尾 / 空 JSON）才算完成。
+    每轮的工具执行结果（observation）会回灌到下一轮上下文，
+    支撑多步连续调用（如 列出目录 → 读取文件 → 得出结论）。
+    """
 
     def run(
         self,
@@ -40,6 +48,7 @@ class AgentLoop:
         )
 
         feedback_text = ""
+        observations_text = ""
         state = LoopState(max_rounds=max_rounds)
 
         def emit(event: dict) -> None:
@@ -56,7 +65,8 @@ class AgentLoop:
                 tools_desc=tools_desc,
                 feedback=feedback_text,
                 memory=mem_context,
-                conversation_history=conversation_history if round_num == 1 else None,
+                conversation_history=conversation_history,
+                observations=observations_text,
             )
 
             emit({"type": "thinking", "msg": "调用 LLM..."})
@@ -95,6 +105,7 @@ class AgentLoop:
                 state.context_text = assistant_text
 
             all_ok = True
+            round_observations: list[str] = []
             for action in actions:
                 emit({
                     "type": "tool_call",
@@ -133,6 +144,11 @@ class AgentLoop:
                     "output": (tool_result.output or "")[:300],
                 })
 
+                # 收集观察结果，供下一轮决策使用
+                round_observations.append(self._format_observation(
+                    action, tool_result,
+                ))
+
                 summary = feedback_engine.process(action, tool_result, round_num)
                 state.history.append(summary)
 
@@ -147,12 +163,34 @@ class AgentLoop:
                     all_ok = False
                     feedback_text = summary.context_for_llm
 
-            emit({"type": "round_end", "round": round_num, "all_ok": all_ok})
+            observations_text = "\n".join(round_observations)
             if all_ok:
-                state.status = "success"
-                emit({"type": "done", "status": "success", "rounds": round_num})
-                return state
+                # 本轮全部成功：清掉旧的失败反馈，让 LLM 基于观察结果继续
+                feedback_text = ""
+
+            emit({"type": "round_end", "round": round_num, "all_ok": all_ok})
+            # 工具成功不代表任务完成 —— 继续下一轮，
+            # 由 LLM 根据观察结果决定继续调用还是文本收尾。
 
         state.status = "failed"
         emit({"type": "done", "status": "failed", "rounds": max_rounds})
         return state
+
+    @staticmethod
+    def _format_observation(action, tool_result: object) -> str:
+        """把一次工具调用的结果格式化为可回灌的文本。"""
+        from hatch.core.models import ToolResult
+        result = tool_result  # type: ToolResult
+        detail = result.output or result.error or ""
+        status = "成功" if result.success else "失败"
+        params = ", ".join(
+            f"{k}={str(v)[:60]}" for k, v in list(action.parameters.items())[:3]
+        )
+        obs = f"- 调用 {action.tool_name}({params}) → {status}"
+        if detail:
+            lines = detail.splitlines()
+            shown = lines[:OBS_LINE_LIMIT]
+            obs += "\n  输出:\n" + "\n".join(f"    {l}" for l in shown)
+            if len(lines) > OBS_LINE_LIMIT:
+                obs += f"\n    ...(共 {len(lines)} 行，截断显示)"
+        return obs
