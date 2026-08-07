@@ -128,11 +128,11 @@ class ConversationLog:
         from prompt_toolkit.mouse_events import MouseEventType
 
         if mouse_event.event_type == MouseEventType.SCROLL_UP:
-            self.scroll_up(10)
+            self.scroll_up(3)
             get_app().invalidate()
             return None
         if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
-            self.scroll_down(10)
+            self.scroll_down(3)
             get_app().invalidate()
             return None
         return NotImplemented

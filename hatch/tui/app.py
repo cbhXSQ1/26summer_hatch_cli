@@ -132,7 +132,7 @@ class HatchChatApp:
             full_screen=False,
             mouse_support=True,
         )
-        self.app.timeoutlen = 0.1  # Esc 等前缀键更快响应
+        self.app.timeoutlen = 0.05  # Esc 等前缀键更快响应
 
     def _scroll_log(self, delta: int) -> None:
         """滚动对话日志：负值上滚，正值下滚。"""
