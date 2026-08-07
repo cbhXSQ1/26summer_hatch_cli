@@ -41,6 +41,7 @@ memory:
         config = ConfigLoader.load(str(config_file))
         assert config.llm.provider == "deepseek"
         assert config.llm.model == "deepseek-v4-pro"
+        assert "deepseek-v4-flash" in config.llm.providers["deepseek"]["models"]
         assert config.loop.max_rounds == 3
         assert config.tools.shell_timeout == 30
         assert config.feedback.loop_detection is True

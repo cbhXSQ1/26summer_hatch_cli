@@ -17,7 +17,7 @@ class LLMConfig:
     providers: dict[str, dict] = field(default_factory=lambda: {
         "deepseek": {
             "api_base": "https://api.deepseek.com",
-            "models": ["deepseek-v4-pro", "deepseek-reasoner"],
+            "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
         },
         "glm": {
             "api_base": "https://open.bigmodel.cn/api/paas/v4",

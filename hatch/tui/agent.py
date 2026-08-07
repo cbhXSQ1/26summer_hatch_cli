@@ -18,7 +18,8 @@ async def run_agent_async(
     event_queue: asyncio.Queue,
 ) -> None:
     """Run AgentLoop in background executor, pushing events to async queue."""
-    turns = session_manager.get_conversation_turns(session_id, limit=10)
+    # 尽量保留完整历史：截断过小会导致前缀滑动、上下文缓存不命中
+    turns = session_manager.get_conversation_turns(session_id, limit=50)
 
     def _on_event(event: dict) -> None:
         try:

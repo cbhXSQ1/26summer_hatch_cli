@@ -1,4 +1,4 @@
-# Hatch Configuration File
+﻿# Hatch Configuration File
 # See: https://github.com/hatch-agent/hatch#configuration
 
 llm:
@@ -11,7 +11,7 @@ llm:
   providers:
     deepseek:
       api_base: https://api.deepseek.com
-      models: [deepseek-v4-pro, deepseek-reasoner]
+      models: [deepseek-v4-pro, deepseek-v4-flash]
     glm:
       api_base: https://open.bigmodel.cn/api/paas/v4
       models: [glm-5.2, glm-4-plus]
