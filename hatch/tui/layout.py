@@ -18,6 +18,7 @@ def build_layout(
     input_buffer: Buffer,
     model_dropdown: DropdownMenu | None = None,
     sessions_dropdown: DropdownMenu | None = None,
+    key_dropdown: DropdownMenu | None = None,
     focus_target: Window | None = None,
 ) -> Layout:
     separator = Window(height=1, content=FormattedTextControl(
@@ -39,7 +40,7 @@ def build_layout(
     ])
 
     floats = []
-    for dd in (model_dropdown, sessions_dropdown):
+    for dd in (model_dropdown, sessions_dropdown, key_dropdown):
         if dd is not None:
             floats.append(Float(content=dd.__pt_container__(), top=0, left=0))
     if floats:

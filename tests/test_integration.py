@@ -559,6 +559,58 @@ class TestTUI:
         asyncio.run(_do_submit())
         sm.rename.assert_not_called()
 
+    def test_key_dropdown_rendered_in_layout(self, tmp_path):
+        """key 下拉必须出现在布局的浮层中，否则菜单不可见。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+                key_manager=MagicMock(),
+            )
+
+        windows = list(app.layout.find_all_windows())
+        assert app.key_dropdown.__pt_container__() in windows
+        assert app.model_dropdown.__pt_container__() in windows
+        assert app.sessions_dropdown.__pt_container__() in windows
+
+    def test_dropdown_window_cached_and_opaque(self, tmp_path):
+        """下拉窗口缓存同一实例，且全宽不透明避免与对话拼合。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+                key_manager=MagicMock(),
+            )
+
+        w1 = app.model_dropdown.__pt_container__()
+        w2 = app.model_dropdown.__pt_container__()
+        assert w1 is w2  # 缓存同一实例
+        assert "bg:#1a1a1a" in w1.style  # 不透明背景
+
     def test_new_session_gets_auto_named(self, tmp_path):
         """真正的新会话（is_new=True）首次回复后自动命名。"""
         import asyncio

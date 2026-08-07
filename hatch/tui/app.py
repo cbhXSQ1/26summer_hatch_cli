@@ -1,4 +1,4 @@
-# hatch/tui/app.py
+﻿# hatch/tui/app.py
 """Main Hatch TUI Application."""
 
 import asyncio
@@ -120,6 +120,7 @@ class HatchChatApp:
             input_buffer=self.input_buffer,
             model_dropdown=self.model_dropdown,
             sessions_dropdown=self.sessions_dropdown,
+            key_dropdown=self.key_dropdown,
             focus_target=self._focus_target,
         )
 
@@ -277,6 +278,7 @@ class HatchChatApp:
             input_buffer=self.input_buffer,
             model_dropdown=self.model_dropdown,
             sessions_dropdown=self.sessions_dropdown,
+            key_dropdown=self.key_dropdown,
         )
         self.app.layout = self.layout
         self._is_first_reply = True
@@ -463,6 +465,7 @@ class HatchChatApp:
                 input_buffer=self.input_buffer,
                 model_dropdown=self.model_dropdown,
                 sessions_dropdown=self.sessions_dropdown,
+            key_dropdown=self.key_dropdown,
                 focus_target=self._focus_target,
             )
             self.app.layout = self.layout

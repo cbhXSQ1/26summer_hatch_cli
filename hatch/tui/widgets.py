@@ -181,7 +181,7 @@ def _short_params(params: dict) -> str:
 
 
 class DropdownMenu:
-    """Float dropdown list for More/Model selection. Keyboard-navigable."""
+    """Float dropdown list for More/Model/Key selection. Keyboard-navigable."""
 
     def __init__(self, items: list[tuple[str, str]], title: str = "") -> None:
         """
@@ -191,6 +191,7 @@ class DropdownMenu:
         self.title = title
         self.selected_index = 0
         self.visible = False
+        self._window: Window | None = None
 
     def show(self) -> None:
         self.visible = True
@@ -224,10 +225,13 @@ class DropdownMenu:
         return lines
 
     def __pt_container__(self):
-        return Window(
-            content=FormattedTextControl(
-                text=lambda: self._get_formatted_lines() if self.visible else [],
-            ),
-            dont_extend_width=True,
-            dont_extend_height=True,
-        )
+        # 缓存窗口：全宽 + 不透明背景，完整覆盖底层对话文本
+        if self._window is None:
+            self._window = Window(
+                content=FormattedTextControl(
+                    text=lambda: self._get_formatted_lines() if self.visible else [],
+                ),
+                style="bg:#1a1a1a",
+                dont_extend_height=True,
+            )
+        return self._window
