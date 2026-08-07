@@ -1,7 +1,7 @@
 ﻿import pytest
 from unittest.mock import MagicMock
 from prompt_toolkit.formatted_text import FormattedText
-from hatch.tui.widgets import FocusableText, ConversationLog, DropdownMenu
+from hatch.tui.widgets import FocusableText, ConversationLog, DropdownMenu, LogControl
 
 
 class TestFocusableText:
@@ -171,15 +171,25 @@ class TestConversationLogScroll:
         # 单行内容时光标在行首
         assert fragments[cursor_idx + 1][1] == "hello"
 
-    def test_fragment_mouse_handlers_registered(self):
-        """每个文本片段都注册滚轮处理器。"""
-        log = self._fill(3)
-        fragments = log.__pt_container__().content.text()
-        handlers = [f[2] for f in fragments if len(f) == 3]
-        assert len(handlers) >= 3
-        assert all(callable(h) for h in handlers)
-        # handler 与 log 绑定（方法引用）
-        assert handlers[0] == log._mouse_handler
+    def test_control_intercepts_wheel_anywhere(self):
+        """控制层拦截滚轮：任意位置（含空白行/行尾）都滚动。"""
+        from prompt_toolkit.mouse_events import (
+            MouseEvent, MouseEventType, MouseButton,
+        )
+        from prompt_toolkit.mouse_events import Point
+
+        log = self._fill(10)
+        control = log.__pt_container__().content
+        assert isinstance(control, LogControl)
+
+        # 行尾空白位置（x 很大）也要能滚动
+        ev = MouseEvent(
+            position=Point(x=100, y=9), event_type=MouseEventType.SCROLL_UP,
+            button=MouseButton.NONE, modifiers=frozenset(),
+        )
+        result = control.mouse_handler(ev)
+        assert result is None
+        assert log.at_tail() is False
 
     def test_mouse_handler_scrolls(self):
         """滚轮事件调用 scroll_up/scroll_down。"""

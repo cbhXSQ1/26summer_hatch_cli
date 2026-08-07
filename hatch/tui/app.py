@@ -132,6 +132,7 @@ class HatchChatApp:
             full_screen=False,
             mouse_support=True,
         )
+        self.app.timeoutlen = 0.15  # Esc 等前缀键更快响应
 
     def _scroll_log(self, delta: int) -> None:
         """滚动对话日志：负值上滚，正值下滚。"""
@@ -577,6 +578,18 @@ class HatchChatApp:
 
     async def run(self) -> None:
         """Start the TUI application."""
+        # 鼠标模式保活：Windows 控制台失焦/聚焦切换可能丢失鼠标输入模式，
+        # 周期性地重新启用，避免"切走再回来滚轮失效"。
+        async def _keep_mouse():
+            while True:
+                await asyncio.sleep(1.0)
+                try:
+                    self.app.renderer.output.enable_mouse_support()
+                except Exception:
+                    pass
+
+        asyncio.create_task(_keep_mouse())
+
         # Show initial greeting
         self.conv_log.append_text(f"  Working directory: {self.workdir}")
         self.conv_log.append_text(f"  Session: {self.session_name}")

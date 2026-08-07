@@ -42,6 +42,25 @@ from hatch.tui.events import (
 )
 
 
+class LogControl(FormattedTextControl):
+    """对话日志控制：控制层拦截滚轮事件（任意位置），避免位置落空。"""
+
+    def __init__(self, log: "ConversationLog", text) -> None:
+        self.log = log
+        super().__init__(text=text)
+
+    def mouse_handler(self, mouse_event):
+        from prompt_toolkit.mouse_events import MouseEventType
+
+        if mouse_event.event_type in (
+            MouseEventType.SCROLL_UP,
+            MouseEventType.SCROLL_DOWN,
+        ):
+            self.log._mouse_handler(mouse_event)
+            return None
+        return super().mouse_handler(mouse_event)
+
+
 class ConversationLog:
     """Scrollable conversation history area.
 
@@ -241,12 +260,11 @@ class ConversationLog:
                     fragments.append(("[SetCursorPosition]", ""))
                 if i > 0:
                     fragments.append(("", "\n"))
-                # 3 元组 fragment：滚轮/点击事件路由到 _mouse_handler
-                fragments.append(("", line, self._mouse_handler))
+                fragments.append(("", line))
             return fragments
 
         return Window(
-            content=FormattedTextControl(text=_text),
+            content=LogControl(self, _text),
             wrap_lines=True,
             always_hide_cursor=True,
         )

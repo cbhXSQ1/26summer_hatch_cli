@@ -1,5 +1,6 @@
 """Build prompt_toolkit Layout for Hatch TUI."""
 
+from prompt_toolkit.application import get_app
 from prompt_toolkit.layout import Layout, HSplit, Window
 from prompt_toolkit.layout.containers import Float, FloatContainer
 from prompt_toolkit.layout.controls import FormattedTextControl, BufferControl
@@ -42,7 +43,12 @@ def build_layout(
     floats = []
     for dd in (model_dropdown, sessions_dropdown, key_dropdown):
         if dd is not None:
-            floats.append(Float(content=dd.__pt_container__(), top=0, left=0))
+            # 全宽浮层：不透明背景完整覆盖整行，避免与对话文本混排
+            floats.append(Float(
+                content=dd.__pt_container__(),
+                top=0, left=0,
+                width=lambda: get_app().output.get_size().columns,
+            ))
     if floats:
         root = FloatContainer(root, floats=floats)
 
