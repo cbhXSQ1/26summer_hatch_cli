@@ -43,11 +43,18 @@ from hatch.tui.events import (
 
 
 class LogControl(FormattedTextControl):
-    """对话日志控制：控制层拦截滚轮事件（任意位置），避免位置落空。"""
+    """对话日志控制：控制层拦截滚轮事件（任意位置），并捕获窗口高度。"""
 
     def __init__(self, log: "ConversationLog", text) -> None:
         self.log = log
         super().__init__(text=text)
+
+    def create_content(self, width: int, height: int | None):
+        # 在渲染前捕获日志窗口高度，供 _text 切片使用
+        # （布局计算阶段 height 可能为 None，此时保持上一次的值）
+        if height is not None:
+            self.log._last_h = max(1, height)
+        return super().create_content(width, height)
 
     def mouse_handler(self, mouse_event):
         from prompt_toolkit.mouse_events import MouseEventType
@@ -125,11 +132,17 @@ class ConversationLog:
             return max(0, n - self._last_h)
         return max(0, min(self._scroll_top, n - 1))
 
-    def _get_vertical_scroll(self, w) -> int:
-        """每帧记录窗口高度，供光标锚定使用。"""
-        if w.render_info is not None:
-            self._last_h = max(1, w.render_info.window_height)
-        return self.vertical_scroll  # do_scroll 会按光标重新推导
+    def _get_visible_lines(self, lines: list[str]) -> tuple[list[str], int]:
+        """切片：返回 (可见行, 光标所在行偏移)。"""
+        n = len(lines)
+        if n == 0:
+            return [], 0
+        s = self._effective_scroll(n)
+        end = min(n, s + self._last_h)
+        visible = lines[s:end]
+        # 光标锚定切片末行：内容高度==窗口高度时无需滚动，视图=切片
+        cursor = len(visible) - 1
+        return visible, cursor
 
     def _mouse_handler(self, mouse_event):
         """滚轮处理器：注册在每个文本片段上。
@@ -258,14 +271,11 @@ class ConversationLog:
     def __pt_container__(self):
         def _text():
             lines = self.get_text().split("\n")
-            n = len(lines)
-            if n == 0:
+            visible, cursor = self._get_visible_lines(lines)
+            if not visible:
                 return []
-            s = self._effective_scroll(n)
-            # 光标锚定在窗口末行：do_scroll 推导 vertical_scroll = s
-            cursor = min(n - 1, s + self._last_h - 1)
             fragments = []
-            for i, line in enumerate(lines):
+            for i, line in enumerate(visible):
                 if i == cursor:
                     fragments.append(("[SetCursorPosition]", ""))
                 if i > 0:
@@ -277,7 +287,6 @@ class ConversationLog:
             content=LogControl(self, _text),
             wrap_lines=True,
             always_hide_cursor=True,
-            get_vertical_scroll=self._get_vertical_scroll,
         )
 
 

@@ -143,6 +143,23 @@ class TestConversationLogScroll:
         log.follow_tail()
         assert log.at_tail() is True
 
+    def test_visible_slice_follows_scroll_top(self):
+        """可见切片 = [scroll_top, scroll_top + H)，方向切换即时。"""
+        log = self._fill(50, h=10)  # n=50, H=10
+        # 跟随：切片 = 最后 10 行
+        visible, cursor = log._get_visible_lines(log.get_text().split("\n"))
+        assert visible[0] == "line 40"
+        assert visible[-1] == "line 49"
+        assert cursor == 9
+        # 上滚到顶
+        log.scroll_up(100)
+        visible, _ = log._get_visible_lines(log.get_text().split("\n"))
+        assert visible[0] == "line 0"
+        # 方向切换：立即显示下一段（无死区）
+        log.scroll_down(1)
+        visible, _ = log._get_visible_lines(log.get_text().split("\n"))
+        assert visible[0] == "line 1"
+
     def test_unlimited_keeps_all_lines(self):
         """默认不限制行数：超过 500 行也不截断，全部可滚动浏览。"""
         from hatch.tui.events import StreamChunk
