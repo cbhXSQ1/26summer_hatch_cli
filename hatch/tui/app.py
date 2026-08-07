@@ -30,6 +30,7 @@ class HatchChatApp:
         session_manager: SessionManager,
         session_id: str,
         session_name: str,
+        is_new: bool = True,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -37,6 +38,7 @@ class HatchChatApp:
         self.session_manager = session_manager
         self.session_id = session_id
         self.session_name = session_name
+        self.is_new = is_new
 
         # Widgets
         self.conv_log = ConversationLog()
@@ -48,16 +50,9 @@ class HatchChatApp:
         )
         self.key_text = FocusableText("key", prefix="")
 
-        # Dropdowns
+        # Dropdowns — 由配置驱动
         self.model_dropdown = DropdownMenu(
-            items=[
-                ("deepseek-v4-pro", "deepseek"),
-                ("deepseek-reasoner", "deepseek"),
-                ("glm-5.2", "glm"),
-                ("glm-4-plus", "glm"),
-                ("claude-sonnet-4-20250514", "claude"),
-                ("claude-opus-4-20250514", "claude"),
-            ],
+            items=self._build_model_items(config),
             title="Select Model",
         )
         self.sessions_dropdown = DropdownMenu(items=[], title="Sessions")
@@ -75,7 +70,10 @@ class HatchChatApp:
         self._is_first_reply = True
         self._first_task = ""
         self._first_reply_collected = ""
-        self._pending_rename = False
+        # 待处理模式: None / "rename" / "key_name" / "key_base" / "key_key"
+        self._pending_mode: str | None = None
+        self._key_add_name = ""
+        self._key_add_base = ""
 
         # Input buffer
         self.input_buffer = Buffer(multiline=False)
@@ -149,7 +147,7 @@ class HatchChatApp:
         elif self._focus == "cwd":
             self._change_directory()
         elif self._focus == "key":
-            self._show_key_status()
+            self._start_key_add()
 
     def _on_arrow(self, direction: int) -> None:
         if self.model_dropdown.visible:
@@ -165,8 +163,8 @@ class HatchChatApp:
         self.app.invalidate()
 
     def _cancel_dropdown(self) -> None:
-        if self._pending_rename:
-            self._pending_rename = False
+        if self._pending_mode is not None:
+            self._pending_mode = None
             self.input_buffer.text = ""
             self._set_focus("input")
             self.app.invalidate()
@@ -197,6 +195,8 @@ class HatchChatApp:
             cand.llm = copy.copy(self.config.llm)
             cand.llm.provider = provider
             cand.llm.model = label
+            meta = self.config.llm.providers.get(provider, {})
+            cand.llm.api_base = meta.get("api_base", "")
             new_llm = _build_llm(cand, api_key)
             if not new_llm:
                 self.conv_log._lines.append(
@@ -232,6 +232,21 @@ class HatchChatApp:
             self.sessions_dropdown.show()
         self.app.invalidate()
 
+    def _load_session_history(self) -> None:
+        """把会话的历史对话渲染到日志区。"""
+        turns = self.session_manager.get_conversation_turns(self.session_id, limit=50)
+        if not turns:
+            return
+        self.conv_log.append_text("  ---- previous messages ----")
+        for turn in turns:
+            content = turn.get("content", "")
+            role = turn.get("role", "user")
+            if role == "user":
+                self.conv_log.append_text(f"\n> {content}")
+            else:
+                self.conv_log.append_text(content)
+        self.conv_log.append_text("  ---- end ----\n")
+
     def _switch_session(self, sid: str, name: str) -> None:
         self.session_id = sid
         self.session_name = name
@@ -252,12 +267,77 @@ class HatchChatApp:
         self._is_first_reply = True
         self._first_task = ""
         self._first_reply_collected = ""
+        self._load_session_history()
+        self.app.invalidate()
 
     def _start_rename(self) -> None:
-        self._pending_rename = True
+        self._pending_mode = "rename"
         self.input_buffer.text = self.session_name
         self._set_focus("input")
         self.app.invalidate()
+
+    def _start_key_add(self) -> None:
+        """key 导入流程：输入名称 → API 地址 → API Key"""
+        self._pending_mode = "key_name"
+        self._key_add_name = ""
+        self._key_add_base = ""
+        self.input_buffer.text = ""
+        self._set_focus("input")
+        self.app.invalidate()
+
+    def _handle_key_step(self, text: str) -> None:
+        mode = self._pending_mode
+        if mode == "key_name":
+            name = text.strip()
+            if not name:
+                self.conv_log.append_text("  Provider name cannot be empty")
+                self.app.invalidate()
+                return
+            self._key_add_name = name
+            self._pending_mode = "key_base"
+            self.input_buffer.text = ""
+            self.app.invalidate()
+        elif mode == "key_base":
+            base = text.strip()
+            if not base:
+                known = {
+                    "deepseek": "https://api.deepseek.com",
+                    "glm": "https://open.bigmodel.cn/api/paas/v4",
+                    "claude": "https://api.anthropic.com",
+                }
+                base = known.get(self._key_add_name, "")
+            self._key_add_base = base
+            self._pending_mode = "key_key"
+            self.input_buffer.text = ""
+            self.app.invalidate()
+        elif mode == "key_key":
+            key = text.strip()
+            self._pending_mode = None
+            self.input_buffer.text = ""
+            if not key:
+                self.conv_log.append_text("  Key add cancelled (empty key)")
+                self.app.invalidate()
+                return
+            from hatch.security.key_manager import KeyManager
+            km = KeyManager()
+            km.set_key(self._key_add_name, key)
+            current_model = self.config.llm.model
+            km.set_provider_meta(
+                self._key_add_name, self._key_add_base, models=[current_model],
+            )
+            # 同步到内存配置
+            self.config.llm.providers.setdefault(self._key_add_name, {})
+            self.config.llm.providers[self._key_add_name]["api_base"] = self._key_add_base
+            models = self.config.llm.providers[self._key_add_name].get("models", [])
+            if current_model not in models:
+                models.append(current_model)
+            self.config.llm.providers[self._key_add_name]["models"] = models
+            # 刷新模型下拉
+            self.model_dropdown.items = self._build_model_items(self.config)
+            self.key_text.update_text(f"key:{self._key_add_name}")
+            self.conv_log.append_text(f"  Added provider: {self._key_add_name} (key saved)")
+            self._set_focus("input")
+            self.app.invalidate()
 
     def _change_directory(self) -> None:
         import tkinter.filedialog as fd
@@ -289,30 +369,22 @@ class HatchChatApp:
             self._is_first_reply = True
             self._first_task = ""
             self._first_reply_collected = ""
+            self._load_session_history()
             self._set_focus("input")
             self.app.invalidate()
 
-    def _show_key_status(self) -> None:
-        from hatch.security.key_manager import KeyManager
-        km = KeyManager()
-        providers = km.list_providers()
-        if providers:
-            status = ", ".join(providers)
-            self.key_text.update_text(f"keys: {status}"[:20])
-        else:
-            self.key_text.update_text("no keys")
-        self._set_focus("input")
-        self.app.invalidate()
-
     def _submit_task(self, text: str) -> None:
-        if self._pending_rename:
+        if self._pending_mode == "rename":
             name = text.strip() or self.session_name
             self.session_manager.rename(self.session_id, name)
             self.session_name = name
             self.session_text.update_text(name[:15])
-            self._pending_rename = False
+            self._pending_mode = None
             self.input_buffer.text = ""
             self.app.invalidate()
+            return
+        if self._pending_mode in ("key_name", "key_base", "key_key"):
+            self._handle_key_step(text)
             return
         if not text.strip():
             return
@@ -392,13 +464,25 @@ class HatchChatApp:
     async def run(self) -> None:
         """Start the TUI application."""
         # Show initial greeting
-        self.conv_log._lines.append(f"  Working directory: {self.workdir}")
-        self.conv_log._lines.append(f"  Session: {self.session_name}")
-        self.conv_log._lines.append(f"  Model: {self.config.llm.provider}/{self.config.llm.model}")
-        self.conv_log._lines.append("")
-        self.conv_log._lines.append("  Tab 切换底部焦点，Enter 激活，Esc 返回输入框")
-        self.conv_log._lines.append("  Ctrl+E 打开系统编辑器输入（适合中文输入）")
-        self.conv_log._lines.append("  Type a task and press Enter to start.\n")
+        self.conv_log.append_text(f"  Working directory: {self.workdir}")
+        self.conv_log.append_text(f"  Session: {self.session_name}")
+        self.conv_log.append_text(f"  Model: {self.config.llm.provider}/{self.config.llm.model}")
+        self.conv_log.append_text("")
+        if not self.is_new:
+            self._load_session_history()
+        self.conv_log.append_text("  Tab 切换底部焦点，Enter 激活，Esc 返回输入框")
+        self.conv_log.append_text("  Ctrl+E 打开系统编辑器输入（适合中文输入）")
+        self.conv_log.append_text("  key 焦点按 Enter 可导入新 provider / API / Key")
+        self.conv_log.append_text("  Type a task and press Enter to start.\n")
         self.app.invalidate()
 
         await self.app.run_async()
+
+    @staticmethod
+    def _build_model_items(config: Config) -> list[tuple[str, str]]:
+        """从配置构建模型下拉候选列表。"""
+        items = []
+        for p, meta in config.llm.providers.items():
+            for m in meta.get("models", []):
+                items.append((m, p))
+        return items

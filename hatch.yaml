@@ -2,11 +2,22 @@
 # See: https://github.com/hatch-agent/hatch#configuration
 
 llm:
-  provider: deepseek        # deepseek | glm | claude
+  provider: deepseek        # deepseek | glm | claude | 自定义名称
   model: deepseek-v4-pro    # 模型名，可按 provider 选默认值
   api_base: https://api.deepseek.com  # API 端点（仅 OpenAI 兼容格式需要）
   max_tokens: 4096
   temperature: 0.1
+  # 模型候选列表（TUI 模型下拉按此生成，可自定义 provider）
+  providers:
+    deepseek:
+      api_base: https://api.deepseek.com
+      models: [deepseek-v4-pro, deepseek-reasoner]
+    glm:
+      api_base: https://open.bigmodel.cn/api/paas/v4
+      models: [glm-5.2, glm-4-plus]
+    claude:
+      api_base: https://api.anthropic.com
+      models: [claude-sonnet-4-20250514, claude-opus-4-20250514]
 
 loop:
   max_rounds: 3

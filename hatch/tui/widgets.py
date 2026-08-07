@@ -71,6 +71,15 @@ class ConversationLog:
         for p in parts[1:]:
             self._lines.append(p)
 
+    def append_text(self, text: str) -> None:
+        """追加普通文本（按行拆分），用于历史消息加载等。"""
+        if not text:
+            return
+        for line in text.split("\n"):
+            self._lines.append(line)
+        if len(self._lines) > self.max_lines:
+            self._lines = self._lines[-self.max_lines:]
+
     def _format(self, event) -> str:
         t = event.type
         if t == "stream_chunk":

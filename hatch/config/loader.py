@@ -14,6 +14,20 @@ class LLMConfig:
     api_base: str = "https://api.deepseek.com"
     max_tokens: int = 4096
     temperature: float = 0.1
+    providers: dict[str, dict] = field(default_factory=lambda: {
+        "deepseek": {
+            "api_base": "https://api.deepseek.com",
+            "models": ["deepseek-v4-pro", "deepseek-reasoner"],
+        },
+        "glm": {
+            "api_base": "https://open.bigmodel.cn/api/paas/v4",
+            "models": ["glm-5.2", "glm-4-plus"],
+        },
+        "claude": {
+            "api_base": "https://api.anthropic.com",
+            "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
+        },
+    })
 
 
 @dataclass

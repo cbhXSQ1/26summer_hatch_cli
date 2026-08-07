@@ -338,6 +338,115 @@ class TestTUI:
         assert app.model_dropdown.visible is True
         assert app.sessions_dropdown.visible is False
 
+    def test_model_dropdown_built_from_config(self, tmp_path):
+        """模型下拉候选必须来自配置，而非预设。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        config = Config()
+        config.llm.providers["myllm"] = {
+            "api_base": "https://api.myllm.example",
+            "models": ["my-model-1", "my-model-2"],
+        }
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=config,
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+            )
+
+        labels = [label for label, _ in app.model_dropdown.items]
+        assert "deepseek-v4-pro" in labels          # 内置配置
+        assert "my-model-1" in labels               # 自定义配置
+        assert "my-model-2" in labels
+        assert ("my-model-1", "myllm") in app.model_dropdown.items
+
+    def test_key_add_three_step_flow(self, tmp_path):
+        """key 导入三步：名称 → API 地址 → key，完成后保存并刷新下拉。"""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        config = Config()
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=config,
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+            )
+
+        with patch("hatch.security.key_manager.KeyManager") as mock_km_class:
+            mock_km = mock_km_class.return_value
+
+            app._start_key_add()
+            assert app._pending_mode == "key_name"
+
+            # 第一步：provider 名称
+            app._submit_task("myllm")
+            assert app._pending_mode == "key_base"
+
+            # 第二步：API 地址
+            app._submit_task("https://api.myllm.example/v1")
+            assert app._pending_mode == "key_key"
+
+            # 第三步：key
+            app._submit_task("sk-custom-key")
+            assert app._pending_mode is None
+            mock_km.set_key.assert_called_once_with("myllm", "sk-custom-key")
+            mock_km.set_provider_meta.assert_called_once()
+            assert "myllm" in app.config.llm.providers
+            assert app.config.llm.providers["myllm"]["api_base"] == "https://api.myllm.example/v1"
+            assert any(p == "myllm" for _, p in app.model_dropdown.items)
+
+    def test_switch_session_loads_history(self, tmp_path):
+        """切换会话时必须显示之前的对话消息。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        sm = MagicMock()
+        sm.get_conversation_turns.return_value = [
+            {"role": "user", "content": "\u4f60\u597d"},
+            {"role": "assistant", "content": "\u4f60\u597d\uff0c\u6709\u4ec0\u4e48\u53ef\u4ee5\u5e2e\u4f60\uff1f"},
+        ]
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test",
+            )
+
+        app._switch_session("new-sid", "another conversation")
+        text = app.conv_log.get_text()
+        assert "\u4f60\u597d" in text                      # 历史用户消息
+        assert "\u4f60\u597d\uff0c" in text                 # 历史助手消息
+        sm.get_conversation_turns.assert_called_with("new-sid", limit=50)
+
     def test_model_switch_builds_with_new_config(self, tmp_path):
         """Model switch must build the LLM from the new provider/model."""
         from unittest.mock import MagicMock, patch

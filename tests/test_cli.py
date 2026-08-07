@@ -8,6 +8,46 @@ from hatch.config.loader import Config, LLMConfig, LoopConfig, ToolsConfig
 from hatch.core.models import LoopState
 
 
+class TestBuildLLM:
+    """_build_llm 自定义 provider 支持"""
+
+    def test_builds_custom_provider_openai_compat(self) -> None:
+        from hatch.cli import _build_llm
+        from hatch.core.llm import OpenAICompatLLM
+
+        config = Config()
+        config.llm.provider = "myllm"
+        config.llm.model = "my-model-1"
+        config.llm.providers["myllm"] = {
+            "api_base": "https://api.myllm.example/v1",
+            "models": ["my-model-1"],
+        }
+        llm = _build_llm(config, "sk-key")
+        assert isinstance(llm, OpenAICompatLLM)
+        assert llm.base_url == "https://api.myllm.example/v1"
+        assert llm.model == "my-model-1"
+
+    def test_custom_provider_without_base_returns_none(self) -> None:
+        from hatch.cli import _build_llm
+
+        config = Config()
+        config.llm.provider = "ghost"
+        config.llm.providers["ghost"] = {"models": ["m"]}  # 无 api_base
+        assert _build_llm(config, "sk-key") is None
+
+    def test_known_providers_unchanged(self) -> None:
+        from hatch.cli import _build_llm
+        from hatch.core.llm import DeepSeekLLM, GLMLLM, ClaudeLLM
+
+        cfg = Config()
+        cfg.llm.provider = "deepseek"
+        assert isinstance(_build_llm(cfg, "k"), DeepSeekLLM)
+        cfg.llm.provider = "glm"
+        assert isinstance(_build_llm(cfg, "k"), GLMLLM)
+        cfg.llm.provider = "claude"
+        assert isinstance(_build_llm(cfg, "k"), ClaudeLLM)
+
+
 @pytest.fixture
 def runner():
     return CliRunner()

@@ -4,7 +4,7 @@ import os
 import json
 import click
 
-from hatch.core.llm import DeepSeekLLM, GLMLLM, ClaudeLLM
+from hatch.core.llm import DeepSeekLLM, GLMLLM, ClaudeLLM, OpenAICompatLLM
 from hatch.core.loop import AgentLoop
 from hatch.tools.registry import ToolRegistry
 from hatch.tools.file_reader import FileReader
@@ -25,8 +25,10 @@ def _build_llm(config, api_key):
         return GLMLLM(api_key, model=config.llm.model)
     elif config.llm.provider == "claude":
         return ClaudeLLM(api_key, model=config.llm.model)
-    else:
-        return None
+    meta = config.llm.providers.get(config.llm.provider)
+    if meta and meta.get("api_base"):
+        return OpenAICompatLLM(api_key, meta["api_base"], model=config.llm.model)
+    return None
 
 
 def _build_registry(config):
@@ -374,6 +376,7 @@ def chat_command(cwd: str | None) -> None:
         session_manager=sm,
         session_id=session_id,
         session_name=session_name,
+        is_new=is_new,
     )
     asyncio.run(app.run())
 
