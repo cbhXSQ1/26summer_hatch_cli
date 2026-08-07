@@ -107,14 +107,16 @@ class SessionManager:
                 break
         self._write_index(index)
 
-    def get_conversation_turns(self, session_id: str, limit: int = 10) -> list[dict]:
+    def get_conversation_turns(self, session_id: str, limit: int | None = 10) -> list[dict]:
         path = self._session_path(session_id)
         if not path.exists():
             return []
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             turns = data.get("turns", [])
-            return turns[-limit:] if len(turns) > limit else turns
+            if limit is None or len(turns) <= limit:
+                return turns
+            return turns[-limit:]
         except (json.JSONDecodeError, OSError):
             return []
 

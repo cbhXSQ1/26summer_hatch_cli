@@ -50,14 +50,21 @@ class ConversationLog:
     用户上滚后固定位置，滚到底部恢复跟随。
     """
 
-    def __init__(self, max_lines: int = 500) -> None:
+    def __init__(self, max_lines: int | None = None) -> None:
         self._lines: list[str] = []
-        self.max_lines = max_lines
+        self.max_lines = max_lines  # None = 不限制，全部保留可滚动
         # 流式过滤 ```json ... ``` 代码块的状态（可能跨多个 chunk）
         self._json_fence: str | None = None
         self._pending_ticks: str = ""
         # 滚动状态
         self._cursor_line = -1
+
+    def _trim(self) -> None:
+        if self.max_lines and len(self._lines) > self.max_lines:
+            drop = len(self._lines) - self.max_lines
+            self._lines = self._lines[-self.max_lines:]
+            if self._cursor_line != -1:
+                self._cursor_line = max(0, self._cursor_line - drop)
 
     def append_event(self, event) -> None:
         t = getattr(event, "type", None)
@@ -68,10 +75,7 @@ class ConversationLog:
             if text:
                 for line in text.split("\n"):
                     self._lines.append(line)
-        if len(self._lines) > self.max_lines:
-            self._lines = self._lines[-self.max_lines:]
-            if self._cursor_line != -1:
-                self._cursor_line = max(0, self._cursor_line - len(self._lines) + self.max_lines)
+        self._trim()
 
     def scroll_up(self, step: int = 1) -> None:
         n = len(self._lines)
@@ -106,8 +110,7 @@ class ConversationLog:
             if text:
                 for line in text.split("\n"):
                     self._lines.append(line)
-        if len(self._lines) > self.max_lines:
-            self._lines = self._lines[-self.max_lines:]
+        self._trim()
 
     def _append_lines(self, text: str) -> None:
         """按行追加文本，首段接续当前行。"""
@@ -168,8 +171,7 @@ class ConversationLog:
             return
         for line in text.split("\n"):
             self._lines.append(line)
-        if len(self._lines) > self.max_lines:
-            self._lines = self._lines[-self.max_lines:]
+        self._trim()
 
     def _format(self, event) -> str:
         t = event.type

@@ -127,6 +127,23 @@ class TestConversationLogScroll:
         log.follow_tail()
         assert log.at_tail() is True
 
+    def test_unlimited_keeps_all_lines(self):
+        """默认不限制行数：超过 500 行也不截断，全部可滚动浏览。"""
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog()  # max_lines=None
+        for i in range(600):
+            log.append_event(StreamChunk(text=f"line {i}\n"))
+        assert len(log._lines) >= 600  # 首行 + 每 chunk 一行（含尾部空行）
+        assert "line 0" in log.get_text()
+        assert "line 599" in log.get_text()
+
+    def test_explicit_max_lines_still_trims(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=50)
+        for i in range(100):
+            log.append_event(StreamChunk(text=f"line {i}\n"))
+        assert len(log._lines) <= 50
+
     def test_appends_tool_call(self):
         from hatch.tui.events import ToolCall
         log = ConversationLog(max_lines=100)

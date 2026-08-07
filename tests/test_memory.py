@@ -99,3 +99,16 @@ class TestSessionManager:
         sm.rename(sid, "renamed")
         info = sm.get_info(sid)
         assert info["task"] == "renamed"
+
+    def test_get_conversation_turns_limit_none_returns_all(self, tmp_path):
+        from hatch.memory.session_manager import SessionManager
+        sm = SessionManager(str(tmp_path))
+        sid = sm.create("t")
+        for i in range(15):
+            sm.add_conversation_turn(sid, "user", f"msg {i}")
+        all_turns = sm.get_conversation_turns(sid, limit=None)
+        assert len(all_turns) == 15
+        assert all_turns[0]["content"] == "msg 0"
+        limited = sm.get_conversation_turns(sid, limit=5)
+        assert len(limited) == 5
+        assert limited[0]["content"] == "msg 10"

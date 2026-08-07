@@ -258,8 +258,8 @@ class HatchChatApp:
         self.app.invalidate()
 
     def _load_session_history(self) -> None:
-        """把会话的历史对话渲染到日志区。"""
-        turns = self.session_manager.get_conversation_turns(self.session_id, limit=50)
+        """把会话的历史对话渲染到日志区（全部加载，可滚动浏览）。"""
+        turns = self.session_manager.get_conversation_turns(self.session_id, limit=None)
         if not turns:
             return
         self.conv_log.append_text("  ---- previous messages ----")

@@ -679,7 +679,7 @@ class TestTUI:
         text = app.conv_log.get_text()
         assert "\u4f60\u597d" in text                      # 历史用户消息
         assert "\u4f60\u597d\uff0c" in text                 # 历史助手消息
-        sm.get_conversation_turns.assert_called_with("new-sid", limit=50)
+        sm.get_conversation_turns.assert_called_with("new-sid", limit=None)
 
     def test_model_switch_builds_with_new_config(self, tmp_path):
         """Model switch must build the LLM from the new provider/model."""
