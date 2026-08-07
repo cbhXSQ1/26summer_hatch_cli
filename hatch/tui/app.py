@@ -212,6 +212,7 @@ class HatchChatApp:
             self.model_dropdown.hide()
             self._set_focus("input")
         else:
+            self.sessions_dropdown.hide()
             self.model_dropdown.show()
         self.app.invalidate()
 
@@ -227,6 +228,7 @@ class HatchChatApp:
             items = [(s.get("task", s["id"])[:20], s["id"]) for s in sessions]
             self.sessions_dropdown.items = items
             self.sessions_dropdown.selected_index = 0
+            self.model_dropdown.hide()
             self.sessions_dropdown.show()
         self.app.invalidate()
 

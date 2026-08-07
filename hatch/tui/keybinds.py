@@ -15,8 +15,9 @@ def build_keybindings(
     submit_task,
 ) -> KeyBindings:
     kb = KeyBindings()
+    not_dropdown = Condition(lambda: not is_dropdown_open())
 
-    @kb.add("tab")
+    @kb.add("tab", filter=not_dropdown)
     def _(event):
         order = ["cwd", "session", "more", "model", "key", "input"]
         current = get_focus()
@@ -24,7 +25,7 @@ def build_keybindings(
         next_idx = (idx + 1) % len(order)
         set_focus(order[next_idx])
 
-    @kb.add("s-tab")
+    @kb.add("s-tab", filter=not_dropdown)
     def _(event):
         order = ["cwd", "session", "more", "model", "key", "input"]
         current = get_focus()

@@ -296,6 +296,48 @@ class TestTUI:
         asyncio.run(_do_submit())
         assert "\u4f60\u597d" in app.conv_log.get_text()
 
+    def test_dropdowns_mutually_exclusive(self, tmp_path):
+        """Opening one dropdown must close the other."""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+        sm.list_sessions.return_value = [
+            {"id": "s1", "task": "session one", "updated": "2026-01-01"},
+        ]
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+
+        # 打开模型下拉 → sessions 下拉必须关闭
+        app._toggle_model_dropdown()
+        assert app.model_dropdown.visible is True
+        app._toggle_sessions_dropdown()
+        assert app.sessions_dropdown.visible is True
+        assert app.model_dropdown.visible is False
+
+        # 反向：打开 sessions 下拉 → 模型下拉必须关闭
+        app._toggle_model_dropdown()
+        assert app.model_dropdown.visible is True
+        assert app.sessions_dropdown.visible is False
+
     def test_model_switch_builds_with_new_config(self, tmp_path):
         """Model switch must build the LLM from the new provider/model."""
         from unittest.mock import MagicMock, patch
