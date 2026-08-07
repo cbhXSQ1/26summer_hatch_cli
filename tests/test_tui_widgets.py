@@ -1,4 +1,5 @@
-import pytest
+﻿import pytest
+from unittest.mock import MagicMock
 from prompt_toolkit.formatted_text import FormattedText
 from hatch.tui.widgets import FocusableText, ConversationLog, DropdownMenu
 
@@ -95,7 +96,7 @@ class TestConversationLogScroll:
         assert log.at_tail() is True
         # 光标（SetCursorPosition）位于最后一行
         fragments = log.__pt_container__().content.text()
-        styles = [s for s, _ in fragments]
+        styles = [f[0] for f in fragments]
         assert "[SetCursorPosition]" in styles
         assert styles.count("[SetCursorPosition]") == 1
 
@@ -163,12 +164,58 @@ class TestConversationLogScroll:
         log = ConversationLog(max_lines=10)
         log.append_event(StreamChunk(text="hello"))
         fragments = log.__pt_container__().content.text()
-        styles = [s for s, _ in fragments]
+        styles = [f[0] for f in fragments]
         # 跟随模式：光标锚定在最后一行开头
         assert "[SetCursorPosition]" in styles
         cursor_idx = styles.index("[SetCursorPosition]")
         # 单行内容时光标在行首
         assert fragments[cursor_idx + 1][1] == "hello"
+
+    def test_fragment_mouse_handlers_registered(self):
+        """每个文本片段都注册滚轮处理器。"""
+        log = self._fill(3)
+        fragments = log.__pt_container__().content.text()
+        handlers = [f[2] for f in fragments if len(f) == 3]
+        assert len(handlers) >= 3
+        assert all(callable(h) for h in handlers)
+        # handler 与 log 绑定（方法引用）
+        assert handlers[0] == log._mouse_handler
+
+    def test_mouse_handler_scrolls(self):
+        """滚轮事件调用 scroll_up/scroll_down。"""
+        from prompt_toolkit.mouse_events import (
+            MouseEvent, MouseEventType, MouseButton, MouseModifier,
+        )
+        from prompt_toolkit.mouse_events import Point
+
+        log = self._fill(10)
+
+        ev_up = MouseEvent(
+            position=Point(x=1, y=1), event_type=MouseEventType.SCROLL_UP,
+            button=MouseButton.NONE, modifiers=frozenset(),
+        )
+        result = log._mouse_handler(ev_up)
+        assert result is None
+        assert log.at_tail() is False
+
+        ev_down = MouseEvent(
+            position=Point(x=1, y=1), event_type=MouseEventType.SCROLL_DOWN,
+            button=MouseButton.NONE, modifiers=frozenset(),
+        )
+        log._mouse_handler(ev_down)
+        assert log.at_tail() is True
+
+    def test_mouse_handler_ignores_clicks(self):
+        from prompt_toolkit.mouse_events import (
+            MouseEvent, MouseEventType, MouseButton, MouseModifier,
+        )
+        from prompt_toolkit.mouse_events import Point
+        log = self._fill(10)
+        ev_click = MouseEvent(
+            position=Point(x=1, y=1), event_type=MouseEventType.MOUSE_UP,
+            button=MouseButton.LEFT, modifiers=frozenset(),
+        )
+        assert log._mouse_handler(ev_click) is NotImplemented
 
 
 class TestDropdownMenu:

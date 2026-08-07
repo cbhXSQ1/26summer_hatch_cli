@@ -101,6 +101,23 @@ class ConversationLog:
     def at_tail(self) -> bool:
         return self._cursor_line == -1
 
+    def _mouse_handler(self, mouse_event):
+        """滚轮处理器：注册在每个文本片段上。
+        返回 None 表示已处理并触发重绘。
+        """
+        from prompt_toolkit.application import get_app
+        from prompt_toolkit.mouse_events import MouseEventType
+
+        if mouse_event.event_type == MouseEventType.SCROLL_UP:
+            self.scroll_up(3)
+            get_app().invalidate()
+            return None
+        if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
+            self.scroll_down(3)
+            get_app().invalidate()
+            return None
+        return NotImplemented
+
     def append_event(self, event) -> None:
         t = getattr(event, "type", None)
         if t == "stream_chunk":
@@ -224,7 +241,8 @@ class ConversationLog:
                     fragments.append(("[SetCursorPosition]", ""))
                 if i > 0:
                     fragments.append(("", "\n"))
-                fragments.append(("", line))
+                # 3 元组 fragment：滚轮/点击事件路由到 _mouse_handler
+                fragments.append(("", line, self._mouse_handler))
             return fragments
 
         return Window(
