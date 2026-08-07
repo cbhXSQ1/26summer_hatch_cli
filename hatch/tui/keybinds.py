@@ -77,4 +77,13 @@ def build_keybindings(
         def _(event):
             scroll_log(20)
 
+        # 鼠标滚轮滚动日志（需 mouse_support=True）
+        @kb.add("<scroll-up>")
+        def _(event):
+            scroll_log(-3)
+
+        @kb.add("<scroll-down>")
+        def _(event):
+            scroll_log(3)
+
     return kb

@@ -130,6 +130,7 @@ class HatchChatApp:
             layout=self.layout,
             key_bindings=self._kb,
             full_screen=False,
+            mouse_support=True,
         )
 
     def _scroll_log(self, delta: int) -> None:
