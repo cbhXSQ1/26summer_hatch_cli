@@ -5,6 +5,8 @@ import asyncio
 import os
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.containers import Window
 
 from hatch.core.llm import LLMBackend
 from hatch.config.loader import Config
@@ -78,6 +80,14 @@ class HatchChatApp:
         # Input buffer
         self.input_buffer = Buffer(multiline=False)
 
+        # 不可见的焦点目标：进入工具栏模式时接管真实焦点，
+        # 让键盘输入不再进入输入框（height=0 不占空间）
+        self._focus_buffer = Buffer()
+        self._focus_target = Window(
+            content=BufferControl(buffer=self._focus_buffer),
+            height=0,
+        )
+
         # Event queue
         self._event_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
 
@@ -105,6 +115,7 @@ class HatchChatApp:
             input_buffer=self.input_buffer,
             model_dropdown=self.model_dropdown,
             sessions_dropdown=self.sessions_dropdown,
+            focus_target=self._focus_target,
         )
 
         # Build app
@@ -118,6 +129,13 @@ class HatchChatApp:
         self._focus = section
         for i, w in enumerate(self._all_widgets):
             w.set_focused(i == self._focus_map.get(section, -1))
+        try:
+            if section == "input":
+                self.app.layout.focus(self.layout.input_window)
+            else:
+                self.app.layout.focus(self._focus_target)
+        except Exception:
+            pass
 
     def _activate_focus(self) -> None:
         if self._focus == "input":
@@ -192,6 +210,7 @@ class HatchChatApp:
             self.config.llm.provider = provider
             self.config.llm.model = label
             self.model_dropdown.hide()
+            self._set_focus("input")
         else:
             self.model_dropdown.show()
         self.app.invalidate()
@@ -203,6 +222,7 @@ class HatchChatApp:
             if sid != self.session_id:
                 self._switch_session(sid, label)
             self.sessions_dropdown.hide()
+            self._set_focus("input")
         else:
             items = [(s.get("task", s["id"])[:20], s["id"]) for s in sessions]
             self.sessions_dropdown.items = items
@@ -261,11 +281,13 @@ class HatchChatApp:
                 input_buffer=self.input_buffer,
                 model_dropdown=self.model_dropdown,
                 sessions_dropdown=self.sessions_dropdown,
+                focus_target=self._focus_target,
             )
             self.app.layout = self.layout
             self._is_first_reply = True
             self._first_task = ""
             self._first_reply_collected = ""
+            self._set_focus("input")
             self.app.invalidate()
 
     def _show_key_status(self) -> None:
@@ -277,6 +299,7 @@ class HatchChatApp:
             self.key_text.update_text(f"keys: {status}"[:20])
         else:
             self.key_text.update_text("no keys")
+        self._set_focus("input")
         self.app.invalidate()
 
     def _submit_task(self, text: str) -> None:
@@ -370,6 +393,9 @@ class HatchChatApp:
         self.conv_log._lines.append(f"  Working directory: {self.workdir}")
         self.conv_log._lines.append(f"  Session: {self.session_name}")
         self.conv_log._lines.append(f"  Model: {self.config.llm.provider}/{self.config.llm.model}")
+        self.conv_log._lines.append("")
+        self.conv_log._lines.append("  Tab 切换底部焦点，Enter 激活，Esc 返回输入框")
+        self.conv_log._lines.append("  Ctrl+E 打开系统编辑器输入（适合中文输入）")
         self.conv_log._lines.append("  Type a task and press Enter to start.\n")
         self.app.invalidate()
 

@@ -40,6 +40,11 @@ def build_keybindings(
     def _(event):
         cancel_dropdown()
 
+    @kb.add("c-e")
+    def _(event):
+        """打开系统编辑器输入（中文 IME 兜底）"""
+        event.app.current_buffer.open_in_editor(event.app)
+
     @kb.add("up", filter=Condition(is_dropdown_open))
     def _(event):
         on_arrow(-1)

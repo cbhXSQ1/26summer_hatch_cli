@@ -223,6 +223,79 @@ class TestTUI:
         assert app.input_buffer.text == "x"
         assert "Busy" in app.conv_log.get_text()
 
+    def test_toolbar_focus_moves_pt_focus(self, tmp_path):
+        """Focus on toolbar element must move real prompt_toolkit focus."""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+
+        app._set_focus("cwd")
+        assert app._focus == "cwd"
+        assert app.cwd_text.is_focused is True
+        assert app.session_text.is_focused is False
+        assert app.app.layout.current_window is app._focus_target
+
+        app._set_focus("input")
+        assert app._focus == "input"
+        assert app.cwd_text.is_focused is False
+        assert app.app.layout.current_window is app.layout.input_window
+
+    def test_user_input_appears_in_log(self, tmp_path):
+        """Submitted task text must be visible in the conversation log."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+            )
+
+        async def _do_submit():
+            with patch("hatch.tui.app.run_agent_async"):
+                app._submit_task("\u4f60\u597d")
+
+        asyncio.run(_do_submit())
+        assert "\u4f60\u597d" in app.conv_log.get_text()
+
     def test_model_switch_builds_with_new_config(self, tmp_path):
         """Model switch must build the LLM from the new provider/model."""
         from unittest.mock import MagicMock, patch

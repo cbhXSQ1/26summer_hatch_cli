@@ -38,6 +38,24 @@ class TestConversationLog:
         log.append_event(StreamChunk(text="hello"))
         assert "hello" in log.get_text()
 
+    def test_stream_chunks_accumulate_on_same_line(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=100)
+        for ch in ["\u4f60", "\u597d", "\uff0c"]:  # 你，好，
+            log.append_event(StreamChunk(text=ch))
+        assert log.get_text() == "\u4f60\u597d\uff0c"
+        assert len(log._lines) == 1
+
+    def test_stream_chunk_with_embedded_newline_splits(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=100)
+        log.append_event(StreamChunk(text="line1\nline2"))
+        assert log.get_text() == "line1\nline2"
+        assert len(log._lines) == 2
+        log.append_event(StreamChunk(text=" more"))
+        assert log.get_text() == "line1\nline2 more"
+        assert len(log._lines) == 2
+
     def test_appends_tool_call(self):
         from hatch.tui.events import ToolCall
         log = ConversationLog(max_lines=100)

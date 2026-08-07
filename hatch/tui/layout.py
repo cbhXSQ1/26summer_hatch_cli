@@ -18,6 +18,7 @@ def build_layout(
     input_buffer: Buffer,
     model_dropdown: DropdownMenu | None = None,
     sessions_dropdown: DropdownMenu | None = None,
+    focus_target: Window | None = None,
 ) -> Layout:
     separator = Window(height=1, content=FormattedTextControl(
         FormattedText([("class:separator", "-" * 80)])
@@ -44,7 +45,13 @@ def build_layout(
     if floats:
         root = FloatContainer(root, floats=floats)
 
-    return Layout(root, focused_element=input_window)
+    if focus_target is not None:
+        # 不可见焦点目标：height=0 不占空间，但属于布局树可聚焦
+        root = HSplit([root, focus_target])
+
+    layout = Layout(root, focused_element=input_window)
+    layout.input_window = input_window
+    return layout
 
 
 def _build_toolbar(cwd, session, more, model, key) -> FormattedText:

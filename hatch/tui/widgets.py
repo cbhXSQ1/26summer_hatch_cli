@@ -22,7 +22,7 @@ class FocusableText:
     def _get_formatted_text(self) -> FormattedText:
         display = f"{self.prefix}{self.text}"
         if self.is_focused:
-            return FormattedText([("bg:#ffffff fg:#000000", f" {display} ")])
+            return FormattedText([("reverse", f" {display} ")])
         return FormattedText([("", f" {display} ")])
 
     def __pt_container__(self) -> Window:
@@ -48,12 +48,28 @@ class ConversationLog:
         self.max_lines = max_lines
 
     def append_event(self, event) -> None:
-        text = self._format(event)
-        if text:
-            for line in text.split("\n"):
-                self._lines.append(line)
+        t = getattr(event, "type", None)
+        if t == "stream_chunk":
+            self._append_stream(getattr(event, "text", ""))
+        else:
+            text = self._format(event)
+            if text:
+                for line in text.split("\n"):
+                    self._lines.append(line)
         if len(self._lines) > self.max_lines:
             self._lines = self._lines[-self.max_lines:]
+
+    def _append_stream(self, text: str) -> None:
+        """追加流式文本到当前行，遇到换行才断行。"""
+        if not text:
+            return
+        parts = text.split("\n")
+        if self._lines:
+            self._lines[-1] += parts[0]
+        else:
+            self._lines.append(parts[0])
+        for p in parts[1:]:
+            self._lines.append(p)
 
     def _format(self, event) -> str:
         t = event.type
