@@ -38,8 +38,9 @@ def build_keybindings(
     def _(event):
         activate_focus()
 
-    @kb.add("escape")
+    @kb.add("escape", eager=True)
     def _(event):
+        # eager: 抢占输入框 emacs 默认的 pass 绑定，确保 Esc 始终可用
         cancel_dropdown()
 
     @kb.add("c-e")
@@ -63,11 +64,11 @@ def build_keybindings(
 
         @kb.add("up", filter=toolbar_mode)
         def _(event):
-            scroll_log(-1)
+            scroll_log(-3)
 
         @kb.add("down", filter=toolbar_mode)
         def _(event):
-            scroll_log(1)
+            scroll_log(3)
 
         @kb.add("pageup")
         def _(event):

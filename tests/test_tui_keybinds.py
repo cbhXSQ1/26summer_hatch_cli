@@ -74,3 +74,34 @@ class TestKeybinds:
         kb, _ = self._build(dropdown_open=False)
         assert self._find_binding(kb, Keys.ScrollUp) is None
         assert self._find_binding(kb, Keys.ScrollDown) is None
+
+    def test_escape_binding_is_eager(self):
+        """Esc 必须 eager：抢占输入框 emacs 默认的 pass 绑定。"""
+        kb, _ = self._build(dropdown_open=False)
+        escs = [b for b in kb.bindings if Keys.Escape in b.keys[0]]
+        assert escs
+        assert all(b.eager() for b in escs)
+
+    def test_toolbar_arrow_scrolls_3_lines(self):
+        """工具栏聚焦时 ↑↓ 滚动 3 行（不灵敏修复）。"""
+        calls = []
+        state = {"open": False, "focus": "cwd"}
+        kb = build_keybindings(
+            get_focus=lambda: state["focus"],
+            set_focus=lambda s: state.update(focus=s),
+            activate_focus=lambda: None,
+            on_arrow=lambda d: None,
+            cancel_dropdown=lambda: None,
+            is_dropdown_open=lambda: state["open"],
+            submit_task=lambda t: None,
+            scroll_log=lambda delta: calls.append(delta),
+        )
+        ups = [b for b in kb.bindings if Keys.Up in b.keys[0]]
+        downs = [b for b in kb.bindings if Keys.Down in b.keys[0]]
+        # 工具栏模式的 ↑（非下拉打开且非输入框聚焦）
+        toolbar_up = next(b for b in ups if b.filter())
+        toolbar_down = next(b for b in downs if b.filter())
+        assert toolbar_up is not None
+        toolbar_up.handler(object())
+        toolbar_down.handler(object())
+        assert calls == [-3, 3]
