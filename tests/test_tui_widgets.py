@@ -83,12 +83,13 @@ class TestConversationLog:
 
 
 class TestConversationLogScroll:
-    def _fill(self, n=10):
+    def _fill(self, n=50, h=10):
         from hatch.tui.events import StreamChunk
         log = ConversationLog(max_lines=100)
         log.append_event(StreamChunk(
             text="\n".join(f"line {i}" for i in range(n))
         ))
+        log._last_h = h
         return log
 
     def test_follows_tail_by_default(self):
@@ -99,31 +100,45 @@ class TestConversationLogScroll:
         styles = [f[0] for f in fragments]
         assert "[SetCursorPosition]" in styles
         assert styles.count("[SetCursorPosition]") == 1
+        # 跟随模式 scroll_top = n - h
+        assert log._effective_scroll(50) == 40
 
-    def test_scroll_up_moves_cursor(self):
-        log = self._fill(10)
+    def test_scroll_up_moves_view_top(self):
+        log = self._fill()
         log.scroll_up(1)
         assert log.at_tail() is False
-        assert log._cursor_line == 8
+        assert log._scroll_top == 39
         log.scroll_up(3)
-        assert log._cursor_line == 5
+        assert log._scroll_top == 36
 
     def test_scroll_down_returns_to_tail(self):
-        log = self._fill(10)
+        log = self._fill()
         log.scroll_up(3)
-        assert log._cursor_line == 6
+        assert log._scroll_top == 37
         log.scroll_down(2)
-        assert log._cursor_line == 8
+        assert log._scroll_top == 39
         log.scroll_down(1)
         assert log.at_tail() is True  # 到底恢复跟随
 
     def test_scroll_up_clamped_at_top(self):
-        log = self._fill(10)
+        log = self._fill()
         log.scroll_up(100)
-        assert log._cursor_line == 0
+        assert log._scroll_top == 0
+        # 顶部继续上滚不变
+        log.scroll_up(1)
+        assert log._scroll_top == 0
+
+    def test_direction_change_no_dead_zone(self):
+        """方向切换立即响应：上滚到顶后反向，视图即刻下移。"""
+        log = self._fill()
+        log.scroll_up(100)      # 到顶 scroll_top=0
+        assert log._scroll_top == 0
+        log.scroll_down(1)      # 反向第一下立即移动
+        assert log._scroll_top == 1
+        assert log.at_tail() is False
 
     def test_follow_tail_resets(self):
-        log = self._fill(10)
+        log = self._fill()
         log.scroll_up(2)
         log.follow_tail()
         assert log.at_tail() is True

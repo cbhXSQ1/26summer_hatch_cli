@@ -64,9 +64,9 @@ class LogControl(FormattedTextControl):
 class ConversationLog:
     """Scrollable conversation history area.
 
-    滚动模型：光标行（[SetCursorPosition]）决定可视窗口。
-    _cursor_line = -1 表示跟随底部（新内容自动滚到最新）；
-    用户上滚后固定位置，滚到底部恢复跟随。
+    滚动模型：scroll_top 指定可见窗口首行；光标锚定在窗口末行
+    (scroll_top + H - 1)，由 prompt_toolkit 的 do_scroll 推导出
+    精确的 vertical_scroll。任何方向滚动都即时生效，无死区。
     """
 
     def __init__(self, max_lines: int | None = None) -> None:
@@ -76,14 +76,15 @@ class ConversationLog:
         self._json_fence: str | None = None
         self._pending_ticks: str = ""
         # 滚动状态
-        self._cursor_line = -1
+        self._scroll_top = 0       # 可见窗口首行
+        self._follow = True        # 是否跟随底部
+        self._last_h = 20          # 窗口高度（渲染时更新）
 
     def _trim(self) -> None:
         if self.max_lines and len(self._lines) > self.max_lines:
             drop = len(self._lines) - self.max_lines
             self._lines = self._lines[-self.max_lines:]
-            if self._cursor_line != -1:
-                self._cursor_line = max(0, self._cursor_line - drop)
+            self._scroll_top = max(0, self._scroll_top - drop)
 
     def append_event(self, event) -> None:
         t = getattr(event, "type", None)
@@ -100,25 +101,35 @@ class ConversationLog:
         n = len(self._lines)
         if n == 0:
             return
-        if self._cursor_line == -1:
-            self._cursor_line = n - 1
-        self._cursor_line = max(0, self._cursor_line - step)
+        if self._follow:
+            self._follow = False
+            self._scroll_top = max(0, n - self._last_h)
+        self._scroll_top = max(0, self._scroll_top - step)
 
     def scroll_down(self, step: int = 1) -> None:
         n = len(self._lines)
-        if n == 0:
-            return
-        if self._cursor_line == -1:
+        if n == 0 or self._follow:
             return  # 已在底部
-        self._cursor_line += step
-        if self._cursor_line >= n - 1:
-            self._cursor_line = -1  # 回到跟随底部
+        self._scroll_top += step
+        if self._scroll_top + self._last_h >= n:
+            self._follow = True  # 回到跟随底部
 
     def follow_tail(self) -> None:
-        self._cursor_line = -1
+        self._follow = True
 
     def at_tail(self) -> bool:
-        return self._cursor_line == -1
+        return self._follow
+
+    def _effective_scroll(self, n: int) -> int:
+        if self._follow:
+            return max(0, n - self._last_h)
+        return max(0, min(self._scroll_top, n - 1))
+
+    def _get_vertical_scroll(self, w) -> int:
+        """每帧记录窗口高度，供光标锚定使用。"""
+        if w.render_info is not None:
+            self._last_h = max(1, w.render_info.window_height)
+        return self.vertical_scroll  # do_scroll 会按光标重新推导
 
     def _mouse_handler(self, mouse_event):
         """滚轮处理器：注册在每个文本片段上。
@@ -250,10 +261,9 @@ class ConversationLog:
             n = len(lines)
             if n == 0:
                 return []
-            if self._cursor_line == -1:
-                cursor = n - 1
-            else:
-                cursor = max(0, min(self._cursor_line, n - 1))
+            s = self._effective_scroll(n)
+            # 光标锚定在窗口末行：do_scroll 推导 vertical_scroll = s
+            cursor = min(n - 1, s + self._last_h - 1)
             fragments = []
             for i, line in enumerate(lines):
                 if i == cursor:
@@ -267,6 +277,7 @@ class ConversationLog:
             content=LogControl(self, _text),
             wrap_lines=True,
             always_hide_cursor=True,
+            get_vertical_scroll=self._get_vertical_scroll,
         )
 
 
