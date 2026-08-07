@@ -43,7 +43,12 @@ from hatch.tui.events import (
 
 
 class ConversationLog:
-    """Scrollable conversation history area."""
+    """Scrollable conversation history area.
+
+    滚动模型：光标行（[SetCursorPosition]）决定可视窗口。
+    _cursor_line = -1 表示跟随底部（新内容自动滚到最新）；
+    用户上滚后固定位置，滚到底部恢复跟随。
+    """
 
     def __init__(self, max_lines: int = 500) -> None:
         self._lines: list[str] = []
@@ -51,6 +56,46 @@ class ConversationLog:
         # 流式过滤 ```json ... ``` 代码块的状态（可能跨多个 chunk）
         self._json_fence: str | None = None
         self._pending_ticks: str = ""
+        # 滚动状态
+        self._cursor_line = -1
+
+    def append_event(self, event) -> None:
+        t = getattr(event, "type", None)
+        if t == "stream_chunk":
+            self._append_stream(getattr(event, "text", ""))
+        else:
+            text = self._format(event)
+            if text:
+                for line in text.split("\n"):
+                    self._lines.append(line)
+        if len(self._lines) > self.max_lines:
+            self._lines = self._lines[-self.max_lines:]
+            if self._cursor_line != -1:
+                self._cursor_line = max(0, self._cursor_line - len(self._lines) + self.max_lines)
+
+    def scroll_up(self, step: int = 1) -> None:
+        n = len(self._lines)
+        if n == 0:
+            return
+        if self._cursor_line == -1:
+            self._cursor_line = n - 1
+        self._cursor_line = max(0, self._cursor_line - step)
+
+    def scroll_down(self, step: int = 1) -> None:
+        n = len(self._lines)
+        if n == 0:
+            return
+        if self._cursor_line == -1:
+            return  # 已在底部
+        self._cursor_line += step
+        if self._cursor_line >= n - 1:
+            self._cursor_line = -1  # 回到跟随底部
+
+    def follow_tail(self) -> None:
+        self._cursor_line = -1
+
+    def at_tail(self) -> bool:
+        return self._cursor_line == -1
 
     def append_event(self, event) -> None:
         t = getattr(event, "type", None)
@@ -163,7 +208,22 @@ class ConversationLog:
 
     def __pt_container__(self):
         def _text():
-            return to_formatted_text(self.get_text()) + [("[SetCursorPosition]", "")]
+            lines = self.get_text().split("\n")
+            n = len(lines)
+            if n == 0:
+                return []
+            if self._cursor_line == -1:
+                cursor = n - 1
+            else:
+                cursor = max(0, min(self._cursor_line, n - 1))
+            fragments = []
+            for i, line in enumerate(lines):
+                if i == cursor:
+                    fragments.append(("[SetCursorPosition]", ""))
+                if i > 0:
+                    fragments.append(("", "\n"))
+                fragments.append(("", line))
+            return fragments
 
         return Window(
             content=FormattedTextControl(text=_text),

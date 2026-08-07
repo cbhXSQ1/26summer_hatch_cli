@@ -107,6 +107,7 @@ class HatchChatApp:
                 or self.key_dropdown.visible
             ),
             submit_task=self._submit_task,
+            scroll_log=self._scroll_log,
         )
 
         # Build layout
@@ -130,6 +131,14 @@ class HatchChatApp:
             key_bindings=self._kb,
             full_screen=False,
         )
+
+    def _scroll_log(self, delta: int) -> None:
+        """滚动对话日志：负值上滚，正值下滚。"""
+        if delta < 0:
+            self.conv_log.scroll_up(-delta)
+        else:
+            self.conv_log.scroll_down(delta)
+        self.app.invalidate()
 
     def _set_focus(self, section: str) -> None:
         self._focus = section
@@ -497,6 +506,7 @@ class HatchChatApp:
             return
         task = text.strip()
         self.input_buffer.text = ""
+        self.conv_log.follow_tail()  # 新任务开始，滚回底部看最新
 
         # Save first task for naming
         if self._is_first_reply:
@@ -574,6 +584,7 @@ class HatchChatApp:
         if not self.is_new:
             self._load_session_history()
         self.conv_log.append_text("  Tab 切换底部焦点，Enter 激活，Esc 返回输入框")
+        self.conv_log.append_text("  工具栏聚焦时 ↑↓ 滚动对话，PgUp/PgDn 翻页")
         self.conv_log.append_text("  Ctrl+E 打开系统编辑器输入（适合中文输入）")
         self.conv_log.append_text("  key 焦点按 Enter 可导入新 provider / API / Key")
         self.conv_log.append_text("  Type a task and press Enter to start.\n")

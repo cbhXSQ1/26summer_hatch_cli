@@ -13,6 +13,7 @@ def build_keybindings(
     cancel_dropdown,
     is_dropdown_open,
     submit_task,
+    scroll_log=None,
 ) -> KeyBindings:
     kb = KeyBindings()
     not_dropdown = Condition(lambda: not is_dropdown_open())
@@ -53,5 +54,27 @@ def build_keybindings(
     @kb.add("down", filter=Condition(is_dropdown_open))
     def _(event):
         on_arrow(1)
+
+    if scroll_log is not None:
+        # 日志滚动：工具栏聚焦（非输入框、非下拉）时 ↑↓ 滚动，PgUp/PgDn 翻页
+        toolbar_mode = Condition(
+            lambda: not is_dropdown_open() and get_focus() != "input"
+        )
+
+        @kb.add("up", filter=toolbar_mode)
+        def _(event):
+            scroll_log(-1)
+
+        @kb.add("down", filter=toolbar_mode)
+        def _(event):
+            scroll_log(1)
+
+        @kb.add("pageup")
+        def _(event):
+            scroll_log(-20)
+
+        @kb.add("pagedown")
+        def _(event):
+            scroll_log(20)
 
     return kb

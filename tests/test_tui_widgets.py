@@ -80,6 +80,53 @@ class TestConversationLog:
         assert "text before" in text
         assert "after" in text
 
+
+class TestConversationLogScroll:
+    def _fill(self, n=10):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=100)
+        log.append_event(StreamChunk(
+            text="\n".join(f"line {i}" for i in range(n))
+        ))
+        return log
+
+    def test_follows_tail_by_default(self):
+        log = self._fill()
+        assert log.at_tail() is True
+        # 光标（SetCursorPosition）位于最后一行
+        fragments = log.__pt_container__().content.text()
+        styles = [s for s, _ in fragments]
+        assert "[SetCursorPosition]" in styles
+        assert styles.count("[SetCursorPosition]") == 1
+
+    def test_scroll_up_moves_cursor(self):
+        log = self._fill(10)
+        log.scroll_up(1)
+        assert log.at_tail() is False
+        assert log._cursor_line == 8
+        log.scroll_up(3)
+        assert log._cursor_line == 5
+
+    def test_scroll_down_returns_to_tail(self):
+        log = self._fill(10)
+        log.scroll_up(3)
+        assert log._cursor_line == 6
+        log.scroll_down(2)
+        assert log._cursor_line == 8
+        log.scroll_down(1)
+        assert log.at_tail() is True  # 到底恢复跟随
+
+    def test_scroll_up_clamped_at_top(self):
+        log = self._fill(10)
+        log.scroll_up(100)
+        assert log._cursor_line == 0
+
+    def test_follow_tail_resets(self):
+        log = self._fill(10)
+        log.scroll_up(2)
+        log.follow_tail()
+        assert log.at_tail() is True
+
     def test_appends_tool_call(self):
         from hatch.tui.events import ToolCall
         log = ConversationLog(max_lines=100)
@@ -99,7 +146,12 @@ class TestConversationLog:
         log = ConversationLog(max_lines=10)
         log.append_event(StreamChunk(text="hello"))
         fragments = log.__pt_container__().content.text()
-        assert fragments[-1] == ("[SetCursorPosition]", "")
+        styles = [s for s, _ in fragments]
+        # 跟随模式：光标锚定在最后一行开头
+        assert "[SetCursorPosition]" in styles
+        cursor_idx = styles.index("[SetCursorPosition]")
+        # 单行内容时光标在行首
+        assert fragments[cursor_idx + 1][1] == "hello"
 
 
 class TestDropdownMenu:
