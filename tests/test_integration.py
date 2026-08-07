@@ -339,7 +339,7 @@ class TestTUI:
         assert app.sessions_dropdown.visible is False
 
     def test_model_dropdown_built_from_config(self, tmp_path):
-        """模型下拉候选必须来自配置，而非预设。"""
+        """模型下拉候选必须来自配置（仅含已有 key 的 provider）。"""
         from unittest.mock import MagicMock, patch
         from prompt_toolkit.output import DummyOutput
         from hatch.tui.app import HatchChatApp
@@ -351,6 +351,9 @@ class TestTUI:
             "models": ["my-model-1", "my-model-2"],
         }
 
+        km = MagicMock()
+        km.get_key.return_value = "sk-key"
+
         with patch(
             "prompt_toolkit.output.defaults.create_output",
             return_value=DummyOutput(),
@@ -362,6 +365,7 @@ class TestTUI:
                 session_manager=MagicMock(),
                 session_id="test-id",
                 session_name="test",
+                key_manager=km,
             )
 
         labels = [label for label, _ in app.model_dropdown.items]
@@ -370,15 +374,22 @@ class TestTUI:
         assert "my-model-2" in labels
         assert ("my-model-1", "myllm") in app.model_dropdown.items
 
-    def test_key_add_three_step_flow(self, tmp_path):
-        """key 导入三步：名称 → API 地址 → key，完成后保存并刷新下拉。"""
-        import asyncio
+    def test_model_dropdown_excludes_provider_without_key(self, tmp_path):
+        """没有 key 的 provider 的模型不应出现在下拉中。"""
         from unittest.mock import MagicMock, patch
         from prompt_toolkit.output import DummyOutput
         from hatch.tui.app import HatchChatApp
         from hatch.config.loader import Config
 
         config = Config()
+        config.llm.providers["nokey"] = {
+            "api_base": "https://api.nokey.example",
+            "models": ["nk-1"],
+        }
+
+        km = MagicMock()
+        km.get_key.return_value = None  # 所有 provider 都没 key
+
         with patch(
             "prompt_toolkit.output.defaults.create_output",
             return_value=DummyOutput(),
@@ -390,30 +401,125 @@ class TestTUI:
                 session_manager=MagicMock(),
                 session_id="test-id",
                 session_name="test",
+                key_manager=km,
             )
 
-        with patch("hatch.security.key_manager.KeyManager") as mock_km_class:
-            mock_km = mock_km_class.return_value
+        labels = [label for label, _ in app.model_dropdown.items]
+        assert "nk-1" not in labels
 
-            app._start_key_add()
-            assert app._pending_mode == "key_name"
+    def test_key_add_four_step_flow(self, tmp_path):
+        """key 导入四步：名称 → API 地址 → 可用模型 → key。"""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
 
-            # 第一步：provider 名称
-            app._submit_task("myllm")
-            assert app._pending_mode == "key_base"
+        config = Config()
+        km = MagicMock()
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=config,
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+                key_manager=km,
+            )
 
-            # 第二步：API 地址
-            app._submit_task("https://api.myllm.example/v1")
-            assert app._pending_mode == "key_key"
+        app._start_key_add()
+        assert app._pending_mode == "key_name"
 
-            # 第三步：key
-            app._submit_task("sk-custom-key")
-            assert app._pending_mode is None
-            mock_km.set_key.assert_called_once_with("myllm", "sk-custom-key")
-            mock_km.set_provider_meta.assert_called_once()
-            assert "myllm" in app.config.llm.providers
-            assert app.config.llm.providers["myllm"]["api_base"] == "https://api.myllm.example/v1"
-            assert any(p == "myllm" for _, p in app.model_dropdown.items)
+        # 第一步：provider 名称
+        app._submit_task("myllm")
+        assert app._pending_mode == "key_base"
+
+        # 第二步：API 地址
+        app._submit_task("https://api.myllm.example/v1")
+        assert app._pending_mode == "key_models"
+
+        # 第三步：显式选择可用模型
+        app._submit_task("model-a, model-b")
+        assert app._pending_mode == "key_key"
+        assert app._key_add_models == ["model-a", "model-b"]
+
+        # 第四步：key
+        app._submit_task("sk-custom-key")
+        assert app._pending_mode is None
+        km.set_key.assert_called_once_with("myllm", "sk-custom-key")
+        km.set_provider_meta.assert_called_once()
+        _, kwargs = km.set_provider_meta.call_args
+        assert kwargs["models"] == ["model-a", "model-b"]
+        assert "myllm" in app.config.llm.providers
+        assert app.config.llm.providers["myllm"]["models"] == ["model-a", "model-b"]
+        assert app.config.llm.providers["myllm"]["api_base"] == "https://api.myllm.example/v1"
+        # 模型下拉出现导入时选择的模型
+        km.get_key.return_value = "sk-custom-key"
+        assert any(m == "model-a" for m, _ in app.model_dropdown.items)
+
+    def test_key_dropdown_switch_and_delete(self, tmp_path):
+        """key 下拉可查看/切换/删除已有 provider。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+        from hatch.core.llm import OpenAICompatLLM
+
+        config = Config()
+        config.llm.providers["myllm"] = {
+            "api_base": "https://api.myllm.example/v1",
+            "models": ["model-a"],
+        }
+
+        km = MagicMock()
+        km.list_providers.return_value = ["deepseek", "myllm"]
+        km.get_key.side_effect = lambda p: "sk-key" if p == "myllm" else "sk-ds"
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=config,
+                session_manager=MagicMock(),
+                session_id="test-id",
+                session_name="test",
+                key_manager=km,
+            )
+
+        # 打开 key 下拉：应有 add/switch/delete 选项
+        app._toggle_key_dropdown()
+        assert app.key_dropdown.visible is True
+        values = [v for _, v in app.key_dropdown.items]
+        assert "add" in values
+        assert "switch:deepseek" in values
+        assert "switch:myllm" in values
+        assert "delete:deepseek" in values
+
+        # 选中 switch:myllm 并确认 → 切换到该 provider
+        idx = values.index("switch:myllm")
+        app.key_dropdown.selected_index = idx
+        app._toggle_key_dropdown()  # 再次 Enter → 执行选中动作
+        assert app.config.llm.provider == "myllm"
+        assert app.config.llm.model == "model-a"
+        assert isinstance(app.llm, OpenAICompatLLM)
+        assert "Switched to myllm" in app.conv_log.get_text()
+
+        # 删除 provider
+        app._toggle_key_dropdown()
+        values = [v for _, v in app.key_dropdown.items]
+        idx = values.index("delete:myllm")
+        app.key_dropdown.selected_index = idx
+        app._toggle_key_dropdown()
+        km.delete_key.assert_called_once_with("myllm")
+        km.delete_provider_meta.assert_called_once_with("myllm")
+        assert "myllm" not in app.config.llm.providers
 
     def test_switch_session_loads_history(self, tmp_path):
         """切换会话时必须显示之前的对话消息。"""

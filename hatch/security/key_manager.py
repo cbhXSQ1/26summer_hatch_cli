@@ -56,6 +56,12 @@ class KeyManager:
     def get_provider_meta(self, name: str) -> dict | None:
         return self._read_meta().get(name)
 
+    def delete_provider_meta(self, name: str) -> None:
+        data = self._read_meta()
+        if name in data:
+            del data[name]
+            self._write_meta(data)
+
     def custom_providers(self) -> list[str]:
         return list(self._read_meta().keys())
 

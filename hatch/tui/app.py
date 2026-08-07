@@ -31,6 +31,7 @@ class HatchChatApp:
         session_id: str,
         session_name: str,
         is_new: bool = True,
+        key_manager=None,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -39,6 +40,8 @@ class HatchChatApp:
         self.session_id = session_id
         self.session_name = session_name
         self.is_new = is_new
+        from hatch.security.key_manager import KeyManager
+        self.km = key_manager or KeyManager()
 
         # Widgets
         self.conv_log = ConversationLog()
@@ -52,10 +55,11 @@ class HatchChatApp:
 
         # Dropdowns — 由配置驱动
         self.model_dropdown = DropdownMenu(
-            items=self._build_model_items(config),
+            items=self._build_model_items(),
             title="Select Model",
         )
         self.sessions_dropdown = DropdownMenu(items=[], title="Sessions")
+        self.key_dropdown = DropdownMenu(items=[], title="Keys")
 
         # Focus state
         self._focus: str = "input"
@@ -70,10 +74,11 @@ class HatchChatApp:
         self._is_first_reply = True
         self._first_task = ""
         self._first_reply_collected = ""
-        # 待处理模式: None / "rename" / "key_name" / "key_base" / "key_key"
+        # 待处理模式: None / "rename" / "key_name" / "key_base" / "key_models" / "key_key"
         self._pending_mode: str | None = None
         self._key_add_name = ""
         self._key_add_base = ""
+        self._key_add_models: list[str] = []
 
         # Input buffer
         self.input_buffer = Buffer(multiline=False)
@@ -97,7 +102,9 @@ class HatchChatApp:
             on_arrow=self._on_arrow,
             cancel_dropdown=self._cancel_dropdown,
             is_dropdown_open=lambda: (
-                self.model_dropdown.visible or self.sessions_dropdown.visible
+                self.model_dropdown.visible
+                or self.sessions_dropdown.visible
+                or self.key_dropdown.visible
             ),
             submit_task=self._submit_task,
         )
@@ -147,7 +154,7 @@ class HatchChatApp:
         elif self._focus == "cwd":
             self._change_directory()
         elif self._focus == "key":
-            self._start_key_add()
+            self._toggle_key_dropdown()
 
     def _on_arrow(self, direction: int) -> None:
         if self.model_dropdown.visible:
@@ -160,6 +167,11 @@ class HatchChatApp:
                 self.sessions_dropdown.move_down()
             else:
                 self.sessions_dropdown.move_up()
+        elif self.key_dropdown.visible:
+            if direction > 0:
+                self.key_dropdown.move_down()
+            else:
+                self.key_dropdown.move_up()
         self.app.invalidate()
 
     def _cancel_dropdown(self) -> None:
@@ -173,6 +185,8 @@ class HatchChatApp:
             self.model_dropdown.hide()
         if self.sessions_dropdown and self.sessions_dropdown.visible:
             self.sessions_dropdown.hide()
+        if self.key_dropdown.visible:
+            self.key_dropdown.hide()
         self._set_focus("input")
         self.app.invalidate()
 
@@ -277,10 +291,11 @@ class HatchChatApp:
         self.app.invalidate()
 
     def _start_key_add(self) -> None:
-        """key 导入流程：输入名称 → API 地址 → API Key"""
+        """key 导入流程：名称 → API 地址 → 可用模型 → API Key"""
         self._pending_mode = "key_name"
         self._key_add_name = ""
         self._key_add_base = ""
+        self._key_add_models = []
         self.input_buffer.text = ""
         self._set_focus("input")
         self.app.invalidate()
@@ -307,6 +322,15 @@ class HatchChatApp:
                 }
                 base = known.get(self._key_add_name, "")
             self._key_add_base = base
+            self._pending_mode = "key_models"
+            self.input_buffer.text = ""
+            self.app.invalidate()
+        elif mode == "key_models":
+            raw = text.strip()
+            models = [m.strip() for m in raw.split(",") if m.strip()]
+            if not models:
+                models = [self.config.llm.model]
+            self._key_add_models = models
             self._pending_mode = "key_key"
             self.input_buffer.text = ""
             self.app.invalidate()
@@ -318,26 +342,100 @@ class HatchChatApp:
                 self.conv_log.append_text("  Key add cancelled (empty key)")
                 self.app.invalidate()
                 return
-            from hatch.security.key_manager import KeyManager
-            km = KeyManager()
-            km.set_key(self._key_add_name, key)
-            current_model = self.config.llm.model
-            km.set_provider_meta(
-                self._key_add_name, self._key_add_base, models=[current_model],
+            self.km.set_key(self._key_add_name, key)
+            self.km.set_provider_meta(
+                self._key_add_name, self._key_add_base, models=self._key_add_models,
             )
             # 同步到内存配置
             self.config.llm.providers.setdefault(self._key_add_name, {})
             self.config.llm.providers[self._key_add_name]["api_base"] = self._key_add_base
-            models = self.config.llm.providers[self._key_add_name].get("models", [])
-            if current_model not in models:
-                models.append(current_model)
-            self.config.llm.providers[self._key_add_name]["models"] = models
+            self.config.llm.providers[self._key_add_name]["models"] = self._key_add_models
             # 刷新模型下拉
-            self.model_dropdown.items = self._build_model_items(self.config)
+            self.model_dropdown.items = self._build_model_items()
             self.key_text.update_text(f"key:{self._key_add_name}")
-            self.conv_log.append_text(f"  Added provider: {self._key_add_name} (key saved)")
+            self.conv_log.append_text(
+                f"  Added provider: {self._key_add_name} "
+                f"(models: {', '.join(self._key_add_models)})"
+            )
             self._set_focus("input")
             self.app.invalidate()
+
+    def _toggle_key_dropdown(self) -> None:
+        """key 下拉：查看已有 key / 切换 / 删除 / 新增"""
+        if self.key_dropdown.visible:
+            action, value = self.key_dropdown.get_selected()
+            self.key_dropdown.hide()
+            if value == "add":
+                self._start_key_add()
+            elif value.startswith("switch:"):
+                self._switch_provider(value[7:])
+            elif value.startswith("delete:"):
+                self._delete_provider(value[7:])
+            else:
+                self._set_focus("input")
+        else:
+            items = [("+ Add new provider", "add")]
+            for p in self.km.list_providers():
+                items.append((f"Switch: {p}", f"switch:{p}"))
+            for p in self.km.list_providers():
+                items.append((f"Delete: {p}", f"delete:{p}"))
+            if not items:
+                items = [("+ Add new provider", "add")]
+            self.key_dropdown.items = items
+            self.key_dropdown.selected_index = 0
+            self.model_dropdown.hide()
+            self.sessions_dropdown.hide()
+            self.key_dropdown.show()
+        self.app.invalidate()
+
+    def _switch_provider(self, name: str) -> None:
+        """切换到已有 key 的 provider"""
+        key = self.km.get_key(name)
+        if not key:
+            self.conv_log.append_text(f"  No key for {name}")
+            self._set_focus("input")
+            self.app.invalidate()
+            return
+        from hatch.cli import _build_llm
+        import copy
+        meta = self.config.llm.providers.get(name, {})
+        models = meta.get("models", [])
+        model = models[0] if models else self.config.llm.model
+        cand = copy.copy(self.config)
+        cand.llm = copy.copy(self.config.llm)
+        cand.llm.provider = name
+        cand.llm.model = model
+        cand.llm.api_base = meta.get("api_base", "")
+        new_llm = _build_llm(cand, key)
+        if not new_llm:
+            self.conv_log.append_text(f"  Cannot build LLM for {name}")
+            self._set_focus("input")
+            self.app.invalidate()
+            return
+        self.llm = new_llm
+        self.config.llm.provider = name
+        self.config.llm.model = model
+        self.model_text.update_text(f"{name}/{model}")
+        self.key_text.update_text(f"key:{name}")
+        self.model_dropdown.items = self._build_model_items()
+        self.conv_log.append_text(f"  Switched to {name} (model: {model})")
+        self._set_focus("input")
+        self.app.invalidate()
+
+    def _delete_provider(self, name: str) -> None:
+        """删除 provider 的 key 与元信息"""
+        self.km.delete_key(name)
+        self.km.delete_provider_meta(name)
+        self.config.llm.providers.pop(name, None)
+        self.model_dropdown.items = self._build_model_items()
+        if name == self.config.llm.provider:
+            self.conv_log.append_text(
+                f"  Deleted {name} — it was the active provider, please switch model/key"
+            )
+        else:
+            self.conv_log.append_text(f"  Deleted {name}")
+        self._set_focus("input")
+        self.app.invalidate()
 
     def _change_directory(self) -> None:
         import tkinter.filedialog as fd
@@ -383,7 +481,7 @@ class HatchChatApp:
             self.input_buffer.text = ""
             self.app.invalidate()
             return
-        if self._pending_mode in ("key_name", "key_base", "key_key"):
+        if self._pending_mode in ("key_name", "key_base", "key_models", "key_key"):
             self._handle_key_step(text)
             return
         if not text.strip():
@@ -478,11 +576,12 @@ class HatchChatApp:
 
         await self.app.run_async()
 
-    @staticmethod
-    def _build_model_items(config: Config) -> list[tuple[str, str]]:
-        """从配置构建模型下拉候选列表。"""
+    def _build_model_items(self) -> list[tuple[str, str]]:
+        """从配置构建模型下拉候选列表（仅含已有 key 的 provider）。"""
         items = []
-        for p, meta in config.llm.providers.items():
+        for p, meta in self.config.llm.providers.items():
+            if self.km.get_key(p) is None:
+                continue
             for m in meta.get("models", []):
                 items.append((m, p))
         return items

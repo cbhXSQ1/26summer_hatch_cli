@@ -377,6 +377,7 @@ def chat_command(cwd: str | None) -> None:
         session_id=session_id,
         session_name=session_name,
         is_new=is_new,
+        key_manager=km,
     )
     asyncio.run(app.run())
 
