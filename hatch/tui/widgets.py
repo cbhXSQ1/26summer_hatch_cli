@@ -1,5 +1,7 @@
 """TUI widgets: FocusableText, DropdownMenu, ConversationLog."""
 
+import re
+
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
@@ -46,6 +48,9 @@ class ConversationLog:
     def __init__(self, max_lines: int = 500) -> None:
         self._lines: list[str] = []
         self.max_lines = max_lines
+        # 流式过滤 ```json ... ``` 代码块的状态（可能跨多个 chunk）
+        self._json_fence: str | None = None
+        self._pending_ticks: str = ""
 
     def append_event(self, event) -> None:
         t = getattr(event, "type", None)
@@ -59,10 +64,8 @@ class ConversationLog:
         if len(self._lines) > self.max_lines:
             self._lines = self._lines[-self.max_lines:]
 
-    def _append_stream(self, text: str) -> None:
-        """追加流式文本到当前行，遇到换行才断行。"""
-        if not text:
-            return
+    def _append_lines(self, text: str) -> None:
+        """按行追加文本，首段接续当前行。"""
         parts = text.split("\n")
         if self._lines:
             self._lines[-1] += parts[0]
@@ -70,6 +73,49 @@ class ConversationLog:
             self._lines.append(parts[0])
         for p in parts[1:]:
             self._lines.append(p)
+
+    def _append_stream(self, text: str) -> None:
+        """追加流式文本到当前行，过滤 ```json``` 代码块，遇到换行才断行。"""
+        if not text:
+            return
+
+        # 正在 json 代码块内：丢弃直到闭合
+        if self._json_fence is not None:
+            self._json_fence += text
+            end = self._json_fence.find("```")
+            if end != -1:
+                self._json_fence = None
+            return
+
+        # 拼接缓存的尾部反引号（可能是 ```json 的跨 chunk 开头）
+        if self._pending_ticks:
+            text = self._pending_ticks + text
+            self._pending_ticks = ""
+
+        low = text.lower()
+        idx = low.find("```json")
+        if idx != -1:
+            if idx > 0:
+                self._append_lines(text[:idx])
+            rest = text[idx + 6:]
+            end = rest.find("```")
+            if end != -1:
+                self._append_lines(rest[end + 3:])
+            else:
+                self._json_fence = rest
+            return
+
+        # 末尾反引号可能是 ```json 的跨 chunk 开头，先缓存
+        if text.endswith("`"):
+            m = re.search(r"(`+)$", text)
+            ticks = m.group(1)
+            body = text[: m.start()]
+            if body:
+                self._append_lines(body)
+            self._pending_ticks = ticks
+            return
+
+        self._append_lines(text)
 
     def append_text(self, text: str) -> None:
         """追加普通文本（按行拆分），用于历史消息加载等。"""

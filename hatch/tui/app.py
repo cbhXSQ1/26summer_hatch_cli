@@ -264,6 +264,7 @@ class HatchChatApp:
     def _switch_session(self, sid: str, name: str) -> None:
         self.session_id = sid
         self.session_name = name
+        self.is_new = False  # 已有会话，不重新命名
         self.session_text.update_text(name[:15])
         self.conv_log = ConversationLog()
         self.layout = build_layout(
@@ -447,6 +448,7 @@ class HatchChatApp:
             self.session_manager = SessionManager(new_dir)
             sid, is_new = self.session_manager.get_latest_or_create("新对话")
             self.session_id = sid
+            self.is_new = is_new
             name = self.session_manager.get_info(sid)
             self.session_name = name["task"] if name else "新对话"
             self.session_text.update_text(self.session_name[:15])
@@ -523,8 +525,8 @@ class HatchChatApp:
                 self.conv_log._lines.append("  Timed out")
                 self.app.invalidate()
 
-            # Check if first reply for auto-naming
-            if self._is_first_reply and self._first_reply_collected:
+            # 仅对真正的新会话自动命名（已有会话保持原名字）
+            if self.is_new and self._is_first_reply and self._first_reply_collected:
                 self._is_first_reply = False
                 name_task = asyncio.create_task(self._auto_name())
             else:

@@ -56,6 +56,30 @@ class TestConversationLog:
         assert log.get_text() == "line1\nline2 more"
         assert len(log._lines) == 2
 
+    def test_stream_filters_json_block(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=100)
+        log.append_event(StreamChunk(text="\u597d\u7684\uff0c\u968f\u4fbf\u804a\u804a\u3002\n"))
+        log.append_event(StreamChunk(text="```json\n[]\n```"))
+        log.append_event(StreamChunk(text="\u5b8c\u6210"))
+        text = log.get_text()
+        assert "```json" not in text
+        assert "[]" not in text
+        assert "\u597d\u7684" in text
+        assert "\u5b8c\u6210" in text
+
+    def test_stream_filters_json_block_split_across_chunks(self):
+        from hatch.tui.events import StreamChunk
+        log = ConversationLog(max_lines=100)
+        log.append_event(StreamChunk(text="text before\n```json"))
+        log.append_event(StreamChunk(text="\n[]\n```"))
+        log.append_event(StreamChunk(text="\nafter"))
+        text = log.get_text()
+        assert "```json" not in text
+        assert "[]" not in text
+        assert "text before" in text
+        assert "after" in text
+
     def test_appends_tool_call(self):
         from hatch.tui.events import ToolCall
         log = ConversationLog(max_lines=100)

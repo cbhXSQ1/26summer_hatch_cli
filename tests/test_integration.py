@@ -521,6 +521,82 @@ class TestTUI:
         km.delete_provider_meta.assert_called_once_with("myllm")
         assert "myllm" not in app.config.llm.providers
 
+    def test_existing_session_not_renamed(self, tmp_path):
+        """已有会话（is_new=False）首次回复后不得自动改名。"""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        sm = MagicMock()
+        sm.get_conversation_turns.return_value = [
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "reply"},
+        ]
+        sm.rename = MagicMock()
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=sm,
+                session_id="test-id",
+                session_name="existing name",
+                is_new=False,
+            )
+
+        async def _do_submit():
+            with patch("hatch.tui.app.run_agent_async"):
+                app._submit_task("new message")
+            if app._running_task:
+                await app._running_task
+
+        asyncio.run(_do_submit())
+        sm.rename.assert_not_called()
+
+    def test_new_session_gets_auto_named(self, tmp_path):
+        """真正的新会话（is_new=True）首次回复后自动命名。"""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        sm = MagicMock()
+        sm.get_conversation_turns.return_value = []
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=sm,
+                session_id="test-id",
+                session_name="\u65b0\u5bf9\u8bdd",
+                is_new=True,
+            )
+
+        # 先喂一条流式回复，再提交（模拟 _process_events 收集）
+        app._first_reply_collected = "some reply text"
+
+        async def _do_submit():
+            with patch("hatch.tui.app.run_agent_async"):
+                app._submit_task("first message")
+            if app._running_task:
+                await app._running_task
+
+        with patch.object(app, "_auto_name") as mock_auto:
+            asyncio.run(_do_submit())
+        mock_auto.assert_awaited_once()
+
     def test_switch_session_loads_history(self, tmp_path):
         """切换会话时必须显示之前的对话消息。"""
         from unittest.mock import MagicMock, patch
