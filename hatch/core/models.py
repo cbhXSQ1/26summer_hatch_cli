@@ -186,3 +186,4 @@ class LoopState:
     history: list[FeedbackSummary] = field(default_factory=list)
     status: str = "running"  # "running" | "success" | "failed" | "stopped"
     context_text: str = ""   # LLM 最后回复的文本内容
+    conversation_turns: list[dict] = field(default_factory=list)  # 本轮产生的对话轮次（助手文本 + 工具结果）

@@ -154,6 +154,18 @@ class TestFileReader:
         assert result.success is False
         assert "二进制" in result.error
 
+    def test_reads_utf8_bom_file(self, tmp_path) -> None:
+        """UTF-8 BOM 文件读取后不应残留 \\ufeff 字符。"""
+        from hatch.tools.file_reader import FileReader
+
+        f = tmp_path / "bom.txt"
+        f.write_bytes(b"\xef\xbb\xbf# Hatch Config\nline2\n")
+        reader = FileReader()
+        result = reader.execute({"path": str(f)})
+        assert result.success is True
+        assert "\ufeff" not in result.output
+        assert "1: # Hatch Config" in result.output
+
     def test_empty_file(self, tmp_path) -> None:
         from hatch.tools.file_reader import FileReader
 
@@ -259,6 +271,50 @@ class TestShellExecutor:
             )
             exe.execute({"command": "echo hi", "timeout": 5})
             assert mock_run.call_args[1]["timeout"] == 5
+
+    def test_working_dir_parameter_respected(self, tmp_path) -> None:
+        """working_dir 参数必须生效 — 命令应在指定目录执行。"""
+        import sys
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        cmd = f'"{sys.executable}" -c "import os; print(os.getcwd())"'
+        result = exe.execute({"command": cmd, "working_dir": str(tmp_path)})
+        assert result.success is True
+        assert str(tmp_path) in result.output
+
+    def test_working_dir_missing_falls_back_to_cwd(self) -> None:
+        """未传 working_dir 时回退到进程当前目录。"""
+        import os
+        import sys
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        cmd = f'"{sys.executable}" -c "import os; print(os.getcwd())"'
+        result = exe.execute({"command": cmd})
+        assert result.success is True
+        assert os.getcwd() in result.output
+
+    def test_none_output_does_not_crash(self) -> None:
+        """stdout/stderr 为 None（部分命令/编码场景）时不崩溃。"""
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=None, stderr=None
+            )
+            result = exe.execute({"command": "weird"})
+            assert result.success is True
+
+    def test_missing_command_key_returns_graceful_error(self) -> None:
+        """parameters 缺少 command 时返回明确错误，而不是抛 KeyError。"""
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        result = exe.execute({})
+        assert result.success is False
+        assert "command" in (result.error or "")
 
 
 class TestTestRunner:

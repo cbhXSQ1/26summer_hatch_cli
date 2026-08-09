@@ -38,10 +38,11 @@ class MockLLM(LLMBackend):
 class OpenAICompatLLM(LLMBackend):
     """OpenAI 兼容 API 后端（DeepSeek、GLM 等国产模型通用）"""
 
-    def __init__(self, api_key: str, base_url: str, model: str) -> None:
+    def __init__(self, api_key: str, base_url: str, model: str, max_tokens: int = 4096) -> None:
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.max_tokens = max_tokens
 
     def complete(self, messages: list[dict], temperature: float | None = None) -> str:
         url = f"{self.base_url}/chat/completions"
@@ -52,6 +53,7 @@ class OpenAICompatLLM(LLMBackend):
         body = {
             "model": self.model,
             "messages": messages,
+            "max_tokens": self.max_tokens,
         }
         if temperature is not None:
             body["temperature"] = temperature
@@ -61,7 +63,7 @@ class OpenAICompatLLM(LLMBackend):
             data = response.json()
             return data["choices"][0]["message"]["content"]
 
-    def stream(self, messages: list[dict]) -> Generator[str, None, None]:
+    def stream(self, messages: list[dict], temperature: float | None = None) -> Generator[str, None, None]:
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -70,8 +72,11 @@ class OpenAICompatLLM(LLMBackend):
         body = {
             "model": self.model,
             "messages": messages,
+            "max_tokens": self.max_tokens,
             "stream": True,
         }
+        if temperature is not None:
+            body["temperature"] = temperature
         with httpx.Client(timeout=120) as client:
             with client.stream("POST", url, headers=headers, content=json.dumps(body)) as response:
                 response.raise_for_status()

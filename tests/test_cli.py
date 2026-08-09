@@ -154,6 +154,9 @@ class TestRunCommand:
             result = runner.invoke(main, ["run", "--quiet", "--cwd", str(workdir), "write code"])
             assert result.exit_code == 0
             assert "任务完成" in result.output
+            # 工作目录必须传给 AgentLoop（system prompt 需要真实目录）
+            kwargs = mock_loop.run.call_args.kwargs
+            assert kwargs.get("workdir") == str(workdir)
 
     def test_run_with_valid_glm(self, runner, mock_sm):
         mock_config = Config()

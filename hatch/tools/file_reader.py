@@ -22,7 +22,8 @@ class FileReader(Tool):
         if path.stat().st_size > self.MAX_SIZE:
             return ToolResult(success=False, error="文件超过 1MB 限制")
         try:
-            content = path.read_text(encoding="utf-8")
+            # utf-8-sig：自动剥离 BOM（Windows 下很多 UTF-8 文件带 BOM）
+            content = path.read_text(encoding="utf-8-sig")
         except UnicodeDecodeError:
             return ToolResult(success=False, error="无法读取二进制文件")
         lines = content.splitlines()

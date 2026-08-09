@@ -12,10 +12,25 @@ class ContextBuilder:
         memory: str = "",
         conversation_history: list[dict] | None = None,
         observations: str = "",
+        workdir: str = "",
     ) -> list[dict]:
         system_prompt = f"""You are a helpful coding agent. You have access to the following tools:
 
 {tools_desc}
+
+## Working Directory
+
+The current working directory is: {workdir}
+
+All relative paths in tool parameters are relative to this directory.
+Do NOT assume any other directory — always trust the working directory above,
+even if previous conversation messages mention other paths.
+
+## Environment
+
+Operating system: Windows, shell is cmd.exe (NOT PowerShell).
+Use Windows cmd commands only: `dir`, `type`, `findstr`, `cd`, `echo`.
+Do NOT use PowerShell-only commands (e.g. `Get-ChildItem`, `ls`, `pwd`, `Select-Object`).
 
 ## Response Rules
 

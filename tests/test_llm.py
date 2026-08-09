@@ -158,6 +158,40 @@ class TestOpenAICompatLLM:
             with pytest.raises(KeyError):
                 llm.complete([{"role": "user", "content": "hi"}])
 
+    def test_stream_sends_temperature_when_given(self) -> None:
+        """stream 与 complete 必须同样支持 temperature（请求体一致，缓存友好）。"""
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            resp = MagicMock()
+            resp.iter_lines.return_value = iter([
+                'data: {"choices": [{"delta": {"content": "hi"}}]}',
+                "data: [DONE]",
+            ])
+            mock_instance.stream.return_value.__enter__.return_value = resp
+            mock_client.return_value.__enter__.return_value = mock_instance
+
+            chunks = list(llm.stream(
+                [{"role": "user", "content": "hi"}], temperature=0.1
+            ))
+            assert "".join(chunks) == "hi"
+            body = json.loads(mock_instance.stream.call_args[1]["content"])
+            assert body["temperature"] == 0.1
+
+    def test_stream_sends_max_tokens(self) -> None:
+        """stream 请求必须带 max_tokens — 防止长输出被截断成半截 JSON。"""
+        llm = OpenAICompatLLM("sk-test", "https://api.example.com/v1", "test-model")
+        with patch("httpx.Client") as mock_client:
+            mock_instance = MagicMock()
+            resp = MagicMock()
+            resp.iter_lines.return_value = iter(["data: [DONE]"])
+            mock_instance.stream.return_value.__enter__.return_value = resp
+            mock_client.return_value.__enter__.return_value = mock_instance
+
+            list(llm.stream([{"role": "user", "content": "hi"}]))
+            body = json.loads(mock_instance.stream.call_args[1]["content"])
+            assert body["max_tokens"] == 4096
+
 
 class TestDeepSeekLLM:
     """DeepSeekLLM"""

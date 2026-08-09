@@ -76,3 +76,66 @@ class TestActionParser:
 
     def test_has_json_block_no_json(self) -> None:
         assert ActionParser.has_json_block("just some text") is False
+
+    def test_parses_xml_tool_calls(self) -> None:
+        """Anthropic 风格 <tool_calls>/<invoke> 必须被解析为动作。"""
+        output = """<tool_calls>
+<invoke name="shell_executor">
+<parameter name="command">dir</parameter>
+<parameter name="working_dir">E:\\summerschool</parameter>
+</invoke>
+</tool_calls>"""
+        actions, status = ActionParser.parse_status(output)
+        assert status == "ok"
+        assert len(actions) == 1
+        assert actions[0].tool_name == "shell_executor"
+        assert actions[0].parameters == {"command": "dir", "working_dir": "E:\\summerschool"}
+
+    def test_xml_mixed_with_text(self) -> None:
+        """文本 + XML 工具调用 → 应解析出动作而不是判为纯文本。"""
+        output = (
+            "\u597d\u7684\uff0c\u6211\u9a6c\u4e0a\u6267\u884c\u3002\n"
+            "<tool_calls>\n"
+            '<invoke name="shell_executor">\n'
+            "<parameter name=\"command\">dir</parameter>\n"
+            "</invoke>\n"
+            "</tool_calls>"
+        )
+        actions, status = ActionParser.parse_status(output)
+        assert status == "ok"
+        assert len(actions) == 1
+        assert actions[0].tool_name == "shell_executor"
+
+    def test_multiple_xml_invokes(self) -> None:
+        output = """<tool_calls>
+<invoke name="file_reader"><parameter name="path">a.py</parameter></invoke>
+<invoke name="shell_executor"><parameter name="command">pytest</parameter></invoke>
+</tool_calls>"""
+        actions, status = ActionParser.parse_status(output)
+        assert status == "ok"
+        assert len(actions) == 2
+        assert [a.tool_name for a in actions] == ["file_reader", "shell_executor"]
+
+    def test_malformed_xml_is_invalid_json(self) -> None:
+        """存在 <invoke> 结构但解析失败 → 提醒重试而不是静默。"""
+        output = "<tool_calls>\n<invoke name=\"shell_executor\">\n</tool_calls>"
+        actions, status = ActionParser.parse_status(output)
+        assert actions == []
+        assert status == "invalid_json"
+
+    def test_extract_text_strips_xml_block(self) -> None:
+        output = (
+            "\u597d\u7684\u3002\n"
+            "<tool_calls>\n"
+            '<invoke name="x"><parameter name="y">z</parameter></invoke>\n'
+            "</tool_calls>"
+        )
+        text = ActionParser.extract_text(output)
+        assert "\u597d\u7684" in text
+        assert "<invoke" not in text
+        assert "<tool_calls>" not in text
+
+    def test_has_json_block_detects_xml(self) -> None:
+        assert ActionParser.has_json_block(
+            "<tool_calls><invoke name=\"x\"></invoke></tool_calls>"
+        ) is True
