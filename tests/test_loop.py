@@ -220,8 +220,78 @@ class TestAgentLoop:
             registry=registry,
             config=Config(),
         )
-        assert state.status == "success"  # 纯文本回复算成功
+        assert state.status == "success"  # 纯文本收尾算成功
         assert "invalid" in state.context_text
+
+    def test_text_with_action_intent_not_complete(self) -> None:
+        """文本表达动作意图（"我先列目录"）但未调用工具 → 不算完成，提醒重试。"""
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.config.loader import Config
+
+        # 第一轮：纯文本计划；第二轮：真正调用工具；第三轮：收尾
+        llm = MockLLM([
+            "好的，我先列出目录内容，再读取关键文件。",
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "dir"}}]
+```""",
+            "```json\n[]\n```",
+        ])
+        registry = ToolRegistry()
+        from hatch.tools.shell_executor import ShellExecutor
+        registry.register(ShellExecutor())
+        state = AgentLoop().run(
+            task="看看目录",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "success"
+        assert state.round == 3
+        # 第二轮确实执行了工具
+        assert any(h.round_number == 2 for h in state.history)
+
+    def test_invalid_json_retried_not_success(self) -> None:
+        """JSON 解析失败 → 提醒重试，而不是静默成功。"""
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.config.loader import Config
+
+        llm = MockLLM([
+            "```json\n[{\"tool_name\": \"shell_executor\", \"parameters\": {\"command\": \"dir\"}},]\n```",  # 尾逗号
+            "```json\n[]\n```",
+        ])
+        registry = ToolRegistry()
+        from hatch.tools.shell_executor import ShellExecutor
+        registry.register(ShellExecutor())
+        state = AgentLoop().run(
+            task="list",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "success"
+        assert state.round == 2
+        assert len(state.history) == 0  # 没有执行任何工具
+
+    def test_empty_json_is_explicit_done(self) -> None:
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.config.loader import Config
+
+        llm = MockLLM(["```json\n[]\n```"])
+        registry = ToolRegistry()
+        state = AgentLoop().run(
+            task="anything",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "success"
+        assert state.round == 1
 
     def test_loop_multiple_actions_single_round(self, tmp_path) -> None:
         from hatch.core.llm import MockLLM

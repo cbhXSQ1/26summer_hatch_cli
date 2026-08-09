@@ -10,6 +10,19 @@ class ActionParser:
 
     @staticmethod
     def parse(llm_output: str) -> list[Action]:
+        actions, _ = ActionParser.parse_status(llm_output)
+        return actions
+
+    @staticmethod
+    def parse_status(llm_output: str) -> tuple[list[Action], str]:
+        """返回 (actions, status)。
+
+        status:
+          - "ok":          解析出动作
+          - "empty":        显式空数组 []（收尾信号）
+          - "invalid_json": 存在 JSON 代码块但解析失败
+          - "no_json":      完全没有 JSON 动作块（纯文本）
+        """
         json_match = re.search(r"```json\s*(.*?)\s*```", llm_output, re.DOTALL)
         if json_match:
             candidate = json_match.group(1)
@@ -18,13 +31,13 @@ class ActionParser:
             if array_match:
                 candidate = array_match.group(0)
             else:
-                return []
+                return [], "no_json"
         try:
             raw = json.loads(candidate)
         except json.JSONDecodeError:
-            return []
+            return [], "invalid_json"
         if not isinstance(raw, list):
-            return []
+            return [], "invalid_json"
         actions = []
         for item in raw:
             if not isinstance(item, dict) or "tool_name" not in item:
@@ -34,7 +47,9 @@ class ActionParser:
                 parameters=item.get("parameters", {}),
                 raw_llm_output=llm_output,
             ))
-        return actions
+        if not actions:
+            return [], "empty"
+        return actions, "ok"
 
     @staticmethod
     def extract_text(llm_output: str) -> str:

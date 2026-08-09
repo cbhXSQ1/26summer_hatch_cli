@@ -14,6 +14,20 @@ from hatch.config.loader import Config
 
 OBS_LINE_LIMIT = 20
 
+# 出现这些词说明 LLM 仍打算采取动作，纯文本回复不应视为完成
+ACTION_INTENT_KEYWORDS = [
+    "调用", "执行", "读取", "列出", "打开", "创建", "修改", "运行",
+    "检查", "查看", "测试", "修复", "写入", "删除", "移动", "搜索",
+    "先", "接下来", "然后", "准备", "尝试", "开始", "我将", "让我",
+    "tool", "command", "file", "目录",
+]
+
+
+def _is_conclusion(text: str) -> bool:
+    """判断纯文本回复是否像收尾（而非动作计划）。"""
+    lower = text.lower()
+    return not any(kw in lower for kw in ACTION_INTENT_KEYWORDS)
+
 
 class AgentLoop:
     """Agent 主循环
@@ -75,27 +89,52 @@ class AgentLoop:
                 llm_output += chunk
                 emit({"type": "stream_chunk", "text": chunk})
 
-            actions = ActionParser.parse(llm_output)
+            actions, parse_status = ActionParser.parse_status(llm_output)
 
             if not actions:
                 text_response = ActionParser.extract_text(llm_output)
-                has_json = ActionParser.has_json_block(llm_output)
 
-                if text_response.strip():
+                if parse_status in ("ok", "empty"):
+                    # 显式空数组 [] = 明确的收尾信号 → 成功
+                    if text_response.strip():
+                        state.context_text = text_response.strip()
+                    state.status = "success"
+                    emit({"type": "done", "status": "success", "rounds": round_num})
+                    return state
+
+                if parse_status == "invalid_json":
+                    # 有 JSON 代码块但解析失败：格式违规，提醒后重试
+                    emit({"type": "warning", "msg": "工具调用 JSON 解析失败"})
+                    feedback_text = (
+                        "你的工具调用 JSON 无法解析。请重新输出，格式必须为：\n"
+                        "```json\n"
+                        '[{{"tool_name": "...", "parameters": {{...}}}}]\n'
+                        "```\n"
+                        "如果任务已完成，输出 ```json [] ``` 表示结束。"
+                    )
+                    emit({"type": "round_end", "round": round_num, "all_ok": False})
+                    continue
+
+                # no_json：纯文本回复 —— 只有看起来是收尾才算完成
+                if text_response.strip() and _is_conclusion(text_response):
                     state.context_text = text_response.strip()
                     state.status = "success"
                     emit({"type": "done", "status": "success", "rounds": round_num})
                     return state
 
-                if has_json:
-                    state.status = "success"
-                    emit({"type": "done", "status": "success", "rounds": round_num})
-                    return state
-
-                emit({"type": "warning", "msg": "LLM 未返回有效 JSON 动作"})
-                state.status = "failed"
-                emit({"type": "done", "status": "failed", "rounds": round_num})
-                return state
+                # 文本表达了动作意图（"我先..."、"接下来调用..."）但未实际执行：
+                # 不能算完成，提醒格式后重试
+                emit({"type": "warning", "msg": "LLM 未执行工具调用"})
+                feedback_text = (
+                    "你刚才只回复了文本，没有执行任何工具调用。\n"
+                    "如果需要操作文件/命令/测试，必须输出工具调用数组：\n"
+                    "```json\n"
+                    '[{{"tool_name": "...", "parameters": {{...}}}}]\n'
+                    "```\n"
+                    "如果任务确实已完成，输出 ```json [] ``` 结束。"
+                )
+                emit({"type": "round_end", "round": round_num, "all_ok": False})
+                continue
 
             emit({"type": "llm_output", "text": llm_output[:500]})
 

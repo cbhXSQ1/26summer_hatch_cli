@@ -33,7 +33,9 @@ Here is your answer. The function works correctly.
 
 3. **Always provide helpful text** — explain what you're doing, what you found, or why you can't do something. Never output only an empty JSON block with no text.
 
-4. When you modify files, run the tests afterwards to verify correctness."""
+4. When you modify files, run the tests afterwards to verify correctness.
+
+5. **Every response MUST end with a ```json code block** containing the tool-call array (or ```json [] ``` when you have nothing more to do). NEVER respond with plain text only — if you say you will do something (e.g. "我先...", "接下来调用..."), you must actually call the tool in the same response."""
 
         if memory:
             system_prompt += f"\n\nProject context:\n{memory}"
