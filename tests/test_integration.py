@@ -727,3 +727,85 @@ class TestTUI:
         assert app.config.llm.provider == "glm"
         assert app.config.llm.model == "glm-5.2"
         assert app.llm is sentinel
+
+    def test_dropdown_renders_at_top_when_open(self, tmp_path):
+        """回归 02644aa：打开模型/会话下拉必须真的渲染在顶部。
+
+        三个下拉浮层全宽堆在 top=0，隐藏的浮层此前会用背景行把
+        可见下拉的文字擦掉（key 浮层最后绘制 → 整行空白）。
+        """
+        import asyncio
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.application.current import create_app_session
+        from prompt_toolkit.data_structures import Size
+        from prompt_toolkit.input.defaults import create_pipe_input
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        llm = MagicMock()
+        config = Config()
+        sm = MagicMock()
+        sm.get_latest_or_create.return_value = ("test-id", True)
+        sm.get_info.return_value = {"task": "test conversation"}
+        sm.list_sessions.return_value = [
+            {"id": "s1", "task": "session one"},
+            {"id": "s2", "task": "session two"},
+        ]
+        km = MagicMock()
+        km.get_key.return_value = "sk-test"
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=llm,
+                config=config,
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test conversation",
+                key_manager=km,
+            )
+
+        class FakeOutput(DummyOutput):
+            def get_size(self):
+                return Size(columns=80, rows=24)
+
+            def fileno(self):
+                return -1
+
+        def render_rows():
+            out = FakeOutput()
+            app.app.renderer.output = out
+            app.app.renderer.clear()
+            app.app.renderer.render(app.app, app.app.layout, False)
+            screen = app.app.renderer._last_screen
+            return [
+                "".join(c.char for c in screen.data_buffer[y].values())
+                for y in range(4)
+            ]
+
+        async def main():
+            with create_pipe_input() as pipe_in, create_app_session(
+                output=DummyOutput(), input=pipe_in
+            ):
+                app._set_focus("model")
+                app._activate_focus()
+                assert app.model_dropdown.visible is True
+                rows = render_rows()
+                assert "Select Model" in rows[0]
+                assert "deepseek-v4-pro" in rows[1]
+
+                app._cancel_dropdown()
+                app._set_focus("more")
+                app._activate_focus()
+                assert app.sessions_dropdown.visible is True
+                assert app.model_dropdown.visible is False
+                rows = render_rows()
+                assert "Sessions" in rows[0]
+                assert "session one" in rows[1]
+                assert "Select Model" not in "".join(rows)
+
+        asyncio.run(main())

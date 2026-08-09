@@ -293,3 +293,27 @@ class TestDropdownMenu:
         menu.move_up()
         menu.move_down()
         assert menu.selected_index == 0
+
+    def test_visible_menu_renders_multiline(self):
+        """菜单内容必须按行分隔：标题/候选项各占一行，纵向列表。"""
+        menu = DropdownMenu(items=[("a", "a"), ("b", "b")], title="T")
+        menu.show()
+        text = "".join(f[1] for f in menu.__pt_container__().content.text())
+        lines = text.split("\n")
+        assert len(lines) == 3, f"expected 3 lines, got {lines!r}"
+        assert lines[0] == "  T"
+        assert lines[1] == "> a"
+        assert lines[2] == "  b"
+
+    def test_hidden_window_has_zero_height(self):
+        """隐藏的下拉窗口高度必须为 0 — 不可见浮层不得绘制背景遮盖对话。
+
+        回归 02644aa：三个下拉浮层都全宽堆在 top=0，隐藏的浮层仍绘制
+        背景行，把可见下拉的文字擦掉。高度归零后浮层整体跳过绘制。
+        """
+        menu = DropdownMenu(items=[("a", "a"), ("b", "b")], title="T")
+        menu.__pt_container__()
+        menu.show()
+        assert menu._window.preferred_height(80, 24).preferred > 0
+        menu.hide()
+        assert menu._window.preferred_height(80, 24).preferred == 0

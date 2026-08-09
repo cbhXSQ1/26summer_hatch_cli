@@ -5,6 +5,7 @@ import re
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.dimension import Dimension
 
 
 class FocusableText:
@@ -340,7 +341,13 @@ class DropdownMenu:
                 lines.append(("reverse", f"> {label}"))
             else:
                 lines.append(("", f"  {label}"))
-        return lines
+        # 行间插入换行：无分隔时 prompt_toolkit 把所有项拼成一行
+        fragments = []
+        for style, text in lines:
+            if fragments:
+                fragments.append(("", "\n"))
+            fragments.append((style, text))
+        return fragments
 
     def __pt_container__(self):
         # 缓存窗口：全宽 + 不透明背景，完整覆盖底层对话文本
@@ -349,6 +356,9 @@ class DropdownMenu:
                 content=FormattedTextControl(
                     text=lambda: self._get_formatted_lines() if self.visible else [],
                 ),
+                # 隐藏时高度为 0：浮层整体跳过绘制，不会用背景行
+                # 覆盖其它可见下拉（多个下拉全宽堆在 top=0 互相遮盖）。
+                height=lambda: None if self.visible else Dimension.zero(),
                 style="bg:#1a1a1a",
                 dont_extend_height=True,
             )
