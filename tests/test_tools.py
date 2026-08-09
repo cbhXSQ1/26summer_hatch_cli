@@ -307,6 +307,48 @@ class TestShellExecutor:
             result = exe.execute({"command": "weird"})
             assert result.success is True
 
+    def test_decodes_utf8_output(self) -> None:
+        """UTF-8 编码的输出（如 type 读取 UTF-8 文件）必须正确解码，不乱码。"""
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="\u4f60\u597d".encode("utf-8"), stderr=b""
+            )
+            result = exe.execute({"command": "type a.md"})
+            assert result.success is True
+            assert "\u4f60\u597d" in result.output
+
+    def test_decodes_gbk_output(self) -> None:
+        """GBK 编码的输出（cmd 中文统计行）也必须正确解码。"""
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="\u4e2a\u6587\u4ef6".encode("gbk"), stderr=b""
+            )
+            result = exe.execute({"command": "dir"})
+            assert result.success is True
+            assert "\u4e2a\u6587\u4ef6" in result.output
+
+    def test_crlf_normalized_to_lf(self) -> None:
+        """CRLF 行尾必须规范化为 LF — 否则 \\r 泄漏进上下文/回复（^M 乱码）。"""
+        from hatch.tools.shell_executor import ShellExecutor
+
+        exe = ShellExecutor()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0,
+                stdout="line1\r\nline2\r\n".encode("utf-8"),
+                stderr=b"",
+            )
+            result = exe.execute({"command": "dir"})
+            assert result.success is True
+            assert "\r" not in result.output
+            assert "line1\nline2" in result.output
+
     def test_missing_command_key_returns_graceful_error(self) -> None:
         """parameters 缺少 command 时返回明确错误，而不是抛 KeyError。"""
         from hatch.tools.shell_executor import ShellExecutor

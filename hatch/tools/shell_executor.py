@@ -20,6 +20,23 @@ class ShellExecutor(Tool):
 
     DEFAULT_TIMEOUT = 30
 
+    @staticmethod
+    def _decode(data: bytes | str | None) -> str:
+        """命令输出解码：优先 UTF-8，失败回退 GBK（Windows cmd 中文），
+        再失败用 latin-1 兜底 —— 避免乱码注入上下文。
+        同时把 CRLF 规范化为 LF（Windows 命令输出行尾），
+        否则 \\r 会泄漏进上下文/回复（终端显示为 ^M）。"""
+        if not data:
+            return ""
+        if isinstance(data, str):
+            return data.replace("\r\n", "\n").replace("\r", "\n")
+        for enc in ("utf-8", "gbk", "latin-1"):
+            try:
+                return data.decode(enc).replace("\r\n", "\n").replace("\r", "\n")
+            except UnicodeDecodeError:
+                continue
+        return data.decode("utf-8", errors="replace")
+
     def execute(self, params: dict) -> ToolResult:
         command = params.get("command")
         if not command:
@@ -36,16 +53,17 @@ class ShellExecutor(Tool):
                 command,
                 shell=True,
                 capture_output=True,
-                text=True,
+                text=False,
                 timeout=timeout,
                 cwd=cwd,
             )
-            # 某些命令/编码场景下 stdout/stderr 可能为 None，防御处理
-            output = (proc.stdout or "") + (proc.stderr or "")
+            stdout = self._decode(proc.stdout)
+            stderr = self._decode(proc.stderr)
+            output = stdout + stderr
             return ToolResult(
                 success=proc.returncode == 0,
                 output=output.strip() or "(no output)",
-                error=(proc.stderr or "").strip() or None,
+                error=stderr.strip() or None,
                 exit_code=proc.returncode,
             )
         except subprocess.TimeoutExpired:

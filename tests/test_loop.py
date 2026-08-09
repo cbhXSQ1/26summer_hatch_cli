@@ -466,6 +466,9 @@ class TestAgentLoop:
         # 第三轮（收尾）消息包含第二轮读取内容
         round3_msgs = " ".join(m["content"] for m in captured[2])
         assert "print('hi')" in round3_msgs
+        # 观察必须跨轮累积：第三轮仍能看到第一轮的 echo 结果
+        # （否则 LLM 每轮只记得上一轮，会说"dir /b 的结果未展示"而重复探索）
+        assert "echo hello" in round3_msgs
 
     def test_workdir_injected_into_system_prompt(self) -> None:
         """真实工作目录必须出现在 system prompt（防历史目录污染）。"""
@@ -860,6 +863,37 @@ class TestAgentLoop:
         assert "content line 53" in round2          # 最后一行也在（完整）
         assert "\u622a\u65ad" not in round2          # 没有截断提示
 
+    def test_explanation_without_action_words_is_conclusion(self) -> None:
+        """解释性回复（道歉/总结/承诺，不含真实动作词）必须一轮收尾 —
+        否则解释任务会 warning 后重复解释一遍（"说两遍"）。"""
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.config.loader import Config
+
+        llm = MockLLM([
+            "\u62b1\u6b49\u9020\u6210\u91cd\u590d\uff0c\u6211\u4ee5\u540e\u4f1a\u57fa\u4e8e\u5df2\u6709\u4fe1\u606f\u76f4\u63a5\u51b3\u7b56\u3002"
+            "\u5f53\u524d\u5df2\u4e86\u89e3\u9879\u76ee\u5168\u8c8c\u3002",
+        ])
+        state = AgentLoop().run(
+            task="\u4e3a\u4ec0\u4e48\u91cd\u590d",
+            llm=llm,
+            registry=ToolRegistry(),
+            config=Config(),
+        )
+        assert state.status == "success"
+        assert state.round == 1  # 一轮收尾，不重复解释
+
+    def test_weak_promise_words_not_enough_for_intent(self) -> None:
+        """只有弱承诺词（我接下来/我会/让我）不算动作意图 — 需真实动作词。"""
+        from hatch.core.loop import _is_conclusion
+
+        assert _is_conclusion("\u6211\u63a5\u4e0b\u6765\u4f1a\u603b\u7ed3\u9879\u76ee\u60c5\u51b5\u3002") is True
+        assert _is_conclusion("\u6211\u4f1a\u57fa\u4e8e\u5df2\u6709\u4fe1\u606f\u76f4\u63a5\u51b3\u7b56\u3002") is True
+        # 但含真实动作词仍是意图
+        assert _is_conclusion("\u6211\u63a5\u4e0b\u6765\u4f1a\u5217\u51fa\u76ee\u5f55\u3002") is False
+        assert _is_conclusion("\u6211\u5148\u67e5\u770b\u6587\u4ef6\u3002") is False
+
     def test_debug_log_writes_messages_and_raw_output(self, tmp_path, monkeypatch) -> None:
         """HATCH_DEBUG 开关：每轮 messages + LLM 原始输出落盘。"""
         from hatch.core.llm import MockLLM
@@ -904,8 +938,9 @@ class TestAgentLoop:
         assert state.status == "failed"
         assert state.round == 3  # 第三轮即停，不空转 12 轮
 
-    def test_tool_result_in_history_is_compressed(self, tmp_path) -> None:
-        """会话历史里的工具结果只存前 6 行摘要 — 防历史膨胀+缓存前缀漂移。"""
+    def test_tool_result_in_history_keeps_full_content(self, tmp_path) -> None:
+        """会话历史必须保留工具结果完整内容 — LLM 跨任务上下文依赖它，
+        摘要会让 LLM 失忆而重新调用工具（这才是循环调用的根源）。"""
         from hatch.core.llm import MockLLM
         from hatch.core.loop import AgentLoop
         from hatch.tools.registry import ToolRegistry
@@ -936,6 +971,7 @@ class TestAgentLoop:
         tool_msgs = [t for t in state.conversation_turns if t["role"] == "user"]
         assert len(tool_msgs) == 1
         content = tool_msgs[0]["content"]
-        assert "line 0" in content
-        assert "line 3" in content
-        assert "line 10" not in content  # 前几行之外的内容不进入历史
+        assert "\u8c03\u7528 shell_executor" in content   # 动作结论在
+        assert "line 0" in content                        # 内容完整保留
+        assert "line 29" in content                       # 最后一行也在
+        assert "\u622a\u65ad" not in content              # 常规输出无截断字样

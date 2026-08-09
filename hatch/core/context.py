@@ -31,6 +31,10 @@ even if previous conversation messages mention other paths.
 Operating system: Windows, shell is cmd.exe (NOT PowerShell).
 Use Windows cmd commands only: `dir`, `type`, `findstr`, `cd`, `echo`.
 Do NOT use PowerShell-only commands (e.g. `Get-ChildItem`, `ls`, `pwd`, `Select-Object`).
+List directories with `dir /b` one level at a time.
+Do NOT run `dir /s /b` on the whole repository — it floods the output with
+`.git`, `venv`, `__pycache__` and other internal files. Use targeted commands
+like `dir /b hatch` instead.
 
 ## Response Rules
 

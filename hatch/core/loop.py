@@ -20,11 +20,13 @@ from hatch.config.loader import Config
 # （TUI 显示截断是给人看的，与回灌无关。）
 OBS_LINE_LIMIT = 200
 
-# 出现这些词说明 LLM 仍打算采取动作，纯文本回复不应视为完成
+# 出现这些词说明 LLM 仍打算采取动作，纯文本回复不应视为完成。
+# 只保留"真实动作词"：解释性回复（道歉/总结/承诺）天然含
+# "我会/接下来/让我"等弱承诺词，若纳入会把解释任务误判为
+# 动作意图 → warning 后重复解释一遍（"说两遍"）。
 ACTION_INTENT_KEYWORDS = [
     "调用", "执行", "读取", "列出", "打开", "创建", "修改", "运行",
     "检查", "查看", "看看", "测试", "修复", "写入", "删除", "移动", "搜索",
-    "先", "接下来", "然后", "准备", "尝试", "开始", "我将", "让我",
     "tool", "command", "file", "目录",
 ]
 
@@ -217,7 +219,8 @@ class AgentLoop:
                         "```json\n"
                         '[{{"tool_name": "...", "parameters": {{...}}}}]\n'
                         "```\n"
-                        "如果任务确实已完成，输出 ```json [] ``` 结束。"
+                        "如果你刚才的内容是对用户问题的回答/解释（无需再执行任何操作），"
+                        "直接输出 ```json [] ``` 结束，不要重复解释。"
                     )
                 emit({"type": "round_end", "round": round_num, "all_ok": False})
                 continue
@@ -315,24 +318,30 @@ class AgentLoop:
                     all_ok = False
                     feedback_text = summary.context_for_llm
 
-            observations_text = "\n".join(round_observations)
-            # 历史只写非重复的工具结果（重复轮次无新信息，防历史膨胀）
+            # 观察结果跨轮累积：每轮 LLM 都能看到本轮及之前所有工具结果。
+            # 若只保留上一轮，LLM 会说"之前的结果未展示"而重复探索
+            # （多步链 dir → 读文件 → 总结 的上下文依赖）。
+            if observations_text:
+                observations_text += "\n"
+            observations_text += "\n".join(round_observations)
+            # 历史只写非重复的工具结果（重复轮次无新信息）
             fresh_observations = "\n".join(
                 obs for obs, rep in zip(round_observations, round_repeats) if not rep
             )
             if fresh_observations:
-                # assistant 文本与新鲜结果配对写入：全重复轮既不写
+                # assistant 文本与工具结果配对写入：全重复轮既不写
                 # assistant 也不写结果，避免历史里出现"说了要做却没结果"的错位
                 if assistant_text:
                     state.context_text = assistant_text
                     state.conversation_turns.append(
                         {"role": "assistant", "content": assistant_text}
                     )
-                # 历史只存压缩摘要（前 HISTORY_OBS_LINES 行）：
-                # 完整观察仅当轮注入，历史膨胀会让上下文缓存前缀漂移
+                # 历史完整保留工具结果内容：LLM 跨任务上下文依赖它。
+                # 摘要会让 LLM 失忆 → 重新调用工具 → 循环调用。
+                # 缓存友好靠固定窗口 + 稳定前缀，而不是删内容。
                 state.conversation_turns.append({
                     "role": "user",
-                    "content": "工具执行结果：\n" + _compress_history_obs(fresh_observations),
+                    "content": "工具执行结果：\n" + observations_text,
                 })
             if all_ok:
                 # 本轮全部成功：引导 LLM 基于观察结果收尾或继续
@@ -372,15 +381,3 @@ class AgentLoop:
                     "如需更多信息，请用更精确的命令缩小范围，不要重复执行同一命令。)"
                 )
         return obs
-
-
-HISTORY_OBS_LINES = 6
-
-
-def _compress_history_obs(observations_text: str) -> str:
-    """历史里只保留观察结果的前几行摘要（防历史膨胀 + 缓存前缀漂移）。"""
-    lines = observations_text.splitlines()
-    if len(lines) <= HISTORY_OBS_LINES:
-        return observations_text
-    head = "\n".join(lines[:HISTORY_OBS_LINES])
-    return head + f"\n...(共 {len(lines)} 行，历史仅保留摘要)"
