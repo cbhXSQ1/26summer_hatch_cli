@@ -246,16 +246,30 @@ class HatchChatApp:
         sessions = self.session_manager.list_sessions()
         if self.sessions_dropdown and self.sessions_dropdown.visible:
             label, sid = self.sessions_dropdown.get_selected()
+            self.sessions_dropdown.hide()
+            if sid == "__new__":
+                self._new_session()
+                return
             if sid != self.session_id:
                 self._switch_session(sid, label)
-            self.sessions_dropdown.hide()
             self._set_focus("input")
         else:
-            items = [(s.get("task", s["id"])[:20], s["id"]) for s in sessions]
+            items = [("+ \u65b0\u5f00\u5bf9\u8bdd", "__new__")]
+            items += [(s.get("task", s["id"])[:20], s["id"]) for s in sessions]
             self.sessions_dropdown.items = items
             self.sessions_dropdown.selected_index = 0
             self.model_dropdown.hide()
             self.sessions_dropdown.show()
+        self.app.invalidate()
+
+    def _new_session(self) -> None:
+        """在 More 下拉中创建并切换到新对话（新会话首次回复后自动命名）。"""
+        sid = self.session_manager.create("\u65b0\u5bf9\u8bdd")
+        info = self.session_manager.get_info(sid)
+        name = info["task"] if info else "\u65b0\u5bf9\u8bdd"
+        self._switch_session(sid, name)
+        self.is_new = True
+        self._set_focus("input")
         self.app.invalidate()
 
     def _load_session_history(self) -> None:

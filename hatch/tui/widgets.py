@@ -248,7 +248,7 @@ class ConversationLog:
             return f"  << {event.name} [{status}] {detail}"
         elif t == "feedback":
             if event.success:
-                return "  All checks passed"
+                return "  Tool succeeded"
             else:
                 return f"  Feedback: {event.issues} issue(s)"
         elif t == "round_end":

@@ -1,6 +1,7 @@
 """Async agent runner — runs AgentLoop in executor thread."""
 
 import asyncio
+import os
 from hatch.core.loop import AgentLoop
 from hatch.core.llm import LLMBackend
 from hatch.tools.registry import ToolRegistry
@@ -18,8 +19,9 @@ async def run_agent_async(
     event_queue: asyncio.Queue,
 ) -> None:
     """Run AgentLoop in background executor, pushing events to async queue."""
-    # 尽量保留完整历史：截断过小会导致前缀滑动、上下文缓存不命中
-    turns = session_manager.get_conversation_turns(session_id, limit=50)
+    # 固定窗口加载最近历史：前缀稳定 → 上下文缓存命中率更高。
+    # 窗口过大会让每次请求的前缀都漂移（新轮次不断追加），缓存全部失效。
+    turns = session_manager.get_conversation_turns(session_id, limit=10)
 
     def _on_event(event: dict) -> None:
         try:
@@ -36,11 +38,12 @@ async def run_agent_async(
             config=config,
             on_event=_on_event,
             conversation_history=turns,
+            workdir=os.getcwd(),
         )
         session_manager.update_status(session_id, state.round, state.status)
         session_manager.add_conversation_turn(session_id, "user", task)
-        if state.context_text:
-            session_manager.add_conversation_turn(session_id, "assistant", state.context_text)
+        for turn in state.conversation_turns:
+            session_manager.add_conversation_turn(session_id, turn["role"], turn["content"])
         event_queue.put_nowait({"_done": True, "status": state.status,
                                  "rounds": state.round, "context_text": state.context_text})
 

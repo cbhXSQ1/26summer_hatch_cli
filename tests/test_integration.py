@@ -805,7 +805,80 @@ class TestTUI:
                 assert app.model_dropdown.visible is False
                 rows = render_rows()
                 assert "Sessions" in rows[0]
-                assert "session one" in rows[1]
+                assert "\u65b0\u5f00\u5bf9\u8bdd" in rows[1]
+                assert "session one" in rows[2]
                 assert "Select Model" not in "".join(rows)
 
         asyncio.run(main())
+
+    def test_more_dropdown_includes_new_session(self, tmp_path):
+        """More 下拉必须包含"新开对话"选项（放最前）。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        sm = MagicMock()
+        sm.list_sessions.return_value = [
+            {"id": "s1", "task": "session one"},
+            {"id": "s2", "task": "session two"},
+        ]
+        km = MagicMock()
+        km.get_key.return_value = "sk-test"
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=sm,
+                session_id="test-id",
+                session_name="test",
+                key_manager=km,
+            )
+
+        app._toggle_sessions_dropdown()
+        values = [v for _, v in app.sessions_dropdown.items]
+        assert values[0] == "__new__"
+        assert "s1" in values
+        assert "s2" in values
+
+    def test_new_session_creates_and_switches(self, tmp_path):
+        """选中"新开对话"→ 创建新会话并切换，且标记为新会话（自动命名）。"""
+        from unittest.mock import MagicMock, patch
+        from prompt_toolkit.output import DummyOutput
+        from hatch.tui.app import HatchChatApp
+        from hatch.config.loader import Config
+
+        sm = MagicMock()
+        sm.list_sessions.return_value = [{"id": "old", "task": "old session"}]
+        sm.create.return_value = "new-sid"
+        sm.get_info.return_value = {"task": "\u65b0\u5bf9\u8bdd"}
+        km = MagicMock()
+        km.get_key.return_value = "sk-test"
+
+        with patch(
+            "prompt_toolkit.output.defaults.create_output",
+            return_value=DummyOutput(),
+        ):
+            app = HatchChatApp(
+                workdir=str(tmp_path),
+                llm=MagicMock(),
+                config=Config(),
+                session_manager=sm,
+                session_id="old",
+                session_name="old session",
+                key_manager=km,
+            )
+
+        app._toggle_sessions_dropdown()  # 打开：第一项就是新开对话
+        assert app.sessions_dropdown.get_selected()[1] == "__new__"
+        app._toggle_sessions_dropdown()  # 再次触发 = 选中执行
+
+        sm.create.assert_called_once_with("\u65b0\u5bf9\u8bdd")
+        assert app.session_id == "new-sid"
+        assert app.is_new is True
+        assert app.session_name == "\u65b0\u5bf9\u8bdd"
