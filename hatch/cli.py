@@ -177,6 +177,7 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
         task=task, llm=llm, registry=registry, config=config,
         on_event=_verbose_printer if verbose else None,
         conversation_history=previous_turns,
+        workdir=os.getcwd(),
     )
 
     sm.update_status(session_id, state.round, state.status)
@@ -185,8 +186,8 @@ def run(task: str, cwd: str | None, verbose: bool) -> None:
         for h in state.history
     ])
     sm.add_conversation_turn(session_id, "user", task)
-    if state.context_text:
-        sm.add_conversation_turn(session_id, "assistant", state.context_text)
+    for turn in state.conversation_turns:
+        sm.add_conversation_turn(session_id, turn["role"], turn["content"])
 
     if not verbose:
         click.echo(f"任务完成。状态: {state.status}，轮次: {state.round}/{state.max_rounds}")
