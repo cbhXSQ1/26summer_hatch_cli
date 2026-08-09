@@ -64,6 +64,8 @@ class AgentLoop:
         feedback_text = ""
         observations_text = ""
         state = LoopState(max_rounds=max_rounds)
+        # 已执行过的动作签名（去重检测：相同工具+相同参数视为重复）
+        executed_signatures: set[str] = set()
 
         def emit(event: dict) -> None:
             if on_event:
@@ -183,10 +185,20 @@ class AgentLoop:
                     "output": (tool_result.output or "")[:300],
                 })
 
+                # 重复动作检测：相同工具 + 相同参数
+                import json as _json
+                sig = action.tool_name + ":" + _json.dumps(
+                    action.parameters, sort_keys=True, ensure_ascii=False,
+                )
+                is_repeat = sig in executed_signatures
+                executed_signatures.add(sig)
+
                 # 收集观察结果，供下一轮决策使用
-                round_observations.append(self._format_observation(
-                    action, tool_result,
-                ))
+                obs = self._format_observation(action, tool_result)
+                if is_repeat:
+                    obs += ("\n  ⚠ 该命令上一轮已执行，结果如上；"
+                            "若结果不满足需求，请说明原因或换一种方式，不要原样重复。")
+                round_observations.append(obs)
 
                 summary = feedback_engine.process(action, tool_result, round_num)
                 state.history.append(summary)
@@ -204,8 +216,12 @@ class AgentLoop:
 
             observations_text = "\n".join(round_observations)
             if all_ok:
-                # 本轮全部成功：清掉旧的失败反馈，让 LLM 基于观察结果继续
-                feedback_text = ""
+                # 本轮全部成功：引导 LLM 基于观察结果收尾或继续
+                feedback_text = (
+                    "上一轮工具调用全部执行成功。\n"
+                    "若任务已完成：总结结论并输出 ```json [] ``` 结束。\n"
+                    "若还需继续操作：基于上一轮的执行结果调用下一个工具。"
+                )
 
             emit({"type": "round_end", "round": round_num, "all_ok": all_ok})
             # 工具成功不代表任务完成 —— 继续下一轮，

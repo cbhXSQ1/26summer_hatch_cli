@@ -50,7 +50,7 @@ memory:
     def test_missing_file_uses_defaults(self, tmp_path) -> None:
         config = ConfigLoader.load(str(tmp_path / "nonexistent.yaml"))
         assert config.llm.provider == "deepseek"
-        assert config.loop.max_rounds == 6
+        assert config.loop.max_rounds == 12
         assert config.tools.shell_timeout == 30
         assert config.feedback.max_rounds == 3
         assert config.memory.max_entries == 100
@@ -71,7 +71,7 @@ llm:
         config = ConfigLoader.load(str(config_file))
         assert config.llm.provider == "glm"
         assert config.llm.model == "glm-5.2"
-        assert config.loop.max_rounds == 6        # default
+        assert config.loop.max_rounds == 12        # default
         assert config.tools.shell_timeout == 30    # default
 
     def test_all_defaults_are_valid(self) -> None:

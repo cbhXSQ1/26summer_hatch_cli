@@ -293,6 +293,45 @@ class TestAgentLoop:
         assert state.status == "success"
         assert state.round == 1
 
+    def test_repeated_action_detected(self, tmp_path) -> None:
+        """相同命令重复执行时，观察结果附带去重提示。"""
+        from hatch.core.llm import MockLLM
+        from hatch.core.loop import AgentLoop
+        from hatch.tools.registry import ToolRegistry
+        from hatch.tools.shell_executor import ShellExecutor
+        from hatch.config.loader import Config
+
+        class RecordingLLM(MockLLM):
+            def __init__(self, responses, capture):
+                super().__init__(responses)
+                self.capture = capture
+            def complete(self, messages):
+                self.capture.append([dict(m) for m in messages])
+                return super().complete(messages)
+
+        captured: list[list[dict]] = []
+        llm = RecordingLLM([
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "echo hello"}}]
+```""",
+            """```json
+[{"tool_name": "shell_executor", "parameters": {"command": "echo hello"}}]
+```""",
+            "```json\n[]\n```",
+        ], captured)
+        registry = ToolRegistry()
+        registry.register(ShellExecutor())
+        state = AgentLoop().run(
+            task="run twice",
+            llm=llm,
+            registry=registry,
+            config=Config(),
+        )
+        assert state.status == "success"
+        # 第三轮消息里应包含重复提示
+        round3 = " ".join(m["content"] for m in captured[2])
+        assert "重复" in round3 or "已执行" in round3
+
     def test_loop_multiple_actions_single_round(self, tmp_path) -> None:
         from hatch.core.llm import MockLLM
         from hatch.core.loop import AgentLoop

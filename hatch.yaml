@@ -20,7 +20,7 @@ llm:
       models: [claude-sonnet-4-20250514, claude-opus-4-20250514]
 
 loop:
-  max_rounds: 6
+  max_rounds: 12
   max_total_tokens: 100000
 
 tools:
@@ -44,7 +44,7 @@ guardrails:
     - "dd if="
 
 feedback:
-  max_rounds: 6          # 最大修正轮次
+  max_rounds: 12          # 最大修正轮次
   loop_detection: true    # 死循环检测
   auto_apply_style: false # 自动应用风格修复
 

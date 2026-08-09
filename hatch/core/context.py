@@ -52,7 +52,11 @@ Here is your answer. The function works correctly.
         if observations:
             messages.append({
                 "role": "user",
-                "content": f"上一轮工具执行结果:\n{observations}",
+                "content": (
+                    "上一轮工具执行结果（请基于这些结果继续任务，"
+                    "不要重复执行相同命令）：\n"
+                    f"{observations}"
+                ),
             })
 
         if feedback:
