@@ -24,6 +24,10 @@ env/
 
 # Hatch runtime data
 ~/.hatch/
+.hatch/
+
+# Tooling dirs
+.superpowers/
 
 # IDE
 .idea/

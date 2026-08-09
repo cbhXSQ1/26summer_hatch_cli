@@ -26,8 +26,6 @@ unit-test:
   only:
     - main
     - merge_requests
-  tags:
-    - python
 
 # Job: Build Wheel
 build:
@@ -44,5 +42,3 @@ build:
   only:
     - main
     - merge_requests
-  tags:
-    - python
