@@ -28,8 +28,15 @@ class FileWriter(Tool):
         content = params["content"]
 
         for root in SYSTEM_ROOTS:
+            root_path = Path(root)
+            if root == "/":
+                # 根目录不能作为前缀拦截：Linux 上所有绝对路径都是 / 的相对路径。
+                # 只有目标就是根目录本身时才拒绝。
+                if path == root_path:
+                    return ToolResult(success=False, error=f"拒绝写入系统目录: {root}")
+                continue
             try:
-                path.relative_to(root)
+                path.relative_to(root_path)
                 return ToolResult(success=False, error=f"拒绝写入系统目录: {root}")
             except ValueError:
                 continue

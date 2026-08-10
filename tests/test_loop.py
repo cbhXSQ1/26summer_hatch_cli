@@ -705,12 +705,18 @@ class TestAgentLoop:
         ], captured)
         registry = ToolRegistry()
         registry.register(ShellExecutor())
-        state = AgentLoop().run(
-            task="\u627e md",
-            llm=llm,
-            registry=registry,
-            config=Config(),
-        )
+        import subprocess
+        from unittest.mock import patch
+        with patch("hatch.tools.shell_executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="a.md\nb.md", stderr=""
+            )
+            state = AgentLoop().run(
+                task="\u627e md",
+                llm=llm,
+                registry=registry,
+                config=Config(),
+            )
         assert state.status == "success"
         round3 = " ".join(m["content"] for m in captured[2])
         assert "\u8be5\u547d\u4ee4\u4e0a\u4e00\u8f6e\u5df2\u6267\u884c" in round3  # 重复提示专属文案

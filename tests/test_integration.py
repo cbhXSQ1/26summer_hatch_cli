@@ -20,11 +20,10 @@ from hatch.config.loader import Config
 class TestEndToEnd:
     """端到端：完整流水线"""
 
-    def test_full_pipeline_fix_and_pass(self) -> None:
+    def test_full_pipeline_fix_and_pass(self, monkeypatch) -> None:
         """LLM 写代码 → 测试失败 → 反馈 → 修正 → 通过"""
-        orig_dir = os.getcwd()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            os.chdir(tmp)
+            monkeypatch.chdir(tmp)
 
             llm = MockLLM([
                 """```json
@@ -64,8 +63,6 @@ class TestEndToEnd:
             assert len(failures) >= 1, "Should have at least one failure feedback"
             assert any(h.success for h in state.history), "Should have at least one success feedback"
 
-            os.chdir(orig_dir)
-
     def test_guardrail_blocks_danger(self) -> None:
         """护栏阻止危险命令"""
         llm = MockLLM([
@@ -99,19 +96,15 @@ class TestEndToEnd:
         assert result.success
         assert "hatch" in result.output.lower() or "tool" in result.output.lower()
 
-    def test_linter_on_good_code(self) -> None:
+    def test_linter_on_good_code(self, monkeypatch) -> None:
         """Linter 检查格式正确的代码"""
-        orig_dir = os.getcwd()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            os.chdir(tmp)
-            os.makedirs(tmp, exist_ok=True)
+            monkeypatch.chdir(tmp)
             Path("good.py").write_text("x = 1\ny = 2\nprint(x + y)\n")
 
             linter = Linter()
             result = linter.execute({"path": "good.py"})
             assert result.success or result.error is not None  # linter may not be installed
-
-            os.chdir(orig_dir)
 
     def test_feedback_engine_aggregates(self) -> None:
         """反馈引擎正确聚合测试结果"""
