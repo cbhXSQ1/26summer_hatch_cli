@@ -17,7 +17,7 @@
 | AC7 | 凭据安全 | 日志和终端输出中不出现明文 API Key | ✅ |
 | AC8 | 配置文件生效 | 修改 `hatch.yaml` 中的 `max_rounds`，重启后生效 | ✅ |
 | AC9 | 一键测试 | `pytest` 全部通过，包含 mock LLM 测试 | ✅ 362/362 |
-| AC10 | CI 通过 | `unit-test` job 通过，`build` job 产出 `.whl` | ⬜ 待推送 GitLab 后确认 |
+| AC10 | CI 通过 | `unit-test` job 通过，`build` job 产出 `.whl` | ✅ 双平台全绿 |
 
 ---
 
@@ -43,7 +43,7 @@
 | D6 | `README.md` | 项目简介、安装、运行、分发命令、目录结构、安全边界说明 | ✅ |
 | D7 | `AGENT_LOG.md` | 按时间顺序记录关键节点，含 subagent 输出片段和人工干预 | ✅ |
 | D8 | `.gitlab-ci.yml` | 含 `unit-test` job | ✅ |
-| D9 | CI/CD 执行记录 | 最后一次 CI 执行 pass | ⬜ 待推送 GitLab 后确认 |
+| D9 | CI/CD 执行记录 | 最后一次 CI 执行 pass | ✅ GitLab pipeline 双绿（unit-test + build）；GitHub Actions windows/ubuntu 双平台也通过。Pipeline: https://git.nju.edu.cn/cbhXSQ2/26summer/-/pipelines |
 | D10 | `REFLECTION.md` | 1500–2500 字反思报告 | ✅ 1900+ 字，本人撰写 |
 | D11 | 线上部署 URL（WebUI） | 纯 CLI harness 项目，无 WebUI 接口，此项不适用 | N/A |
 
@@ -72,6 +72,6 @@
 
 - [x] `.gitignore` 排除 `.env`、`venv/`、`dist/`、`__pycache__/`
 - [x] 仓库中不含任何真实 API Key
-- [x] `pytest` 全绿（362/362）
-- [ ] CI 最后一次执行 pass（待推送 GitLab 后确认）
+- [x] `pytest` 全绿（362/362，Windows + Linux）
+- [x] CI 最后一次执行 pass（GitLab pipeline + GitHub Actions）
 - [x] 所有文档文件已提交
