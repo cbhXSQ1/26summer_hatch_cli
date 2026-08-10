@@ -1,6 +1,8 @@
 # GitLab CI/CD Pipeline for Hatch
 # See: https://docs.gitlab.com/ee/ci/
 
+image: python:3.11
+
 stages:
   - test
   - build
