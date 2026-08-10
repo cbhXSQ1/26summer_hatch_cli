@@ -12,11 +12,6 @@ variables:
   PIP_INDEX_URL: "https://pypi.tuna.tsinghua.edu.cn/simple"
   PIP_TIMEOUT: 60
 
-cache:
-  paths:
-    - .cache/pip/
-    - venv/
-
 before_script:
   - echo "[step1/3] python version"
   - python --version
