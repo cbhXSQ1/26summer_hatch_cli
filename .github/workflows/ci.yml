@@ -31,9 +31,10 @@ jobs:
       - name: Build wheel
         run: python -m build
       - name: Verify wheel installs
+        shell: bash
         run: |
           pip install dist/*.whl
-          hatch --version
+          python -m hatch.cli --version
       - uses: actions/upload-artifact@v4
         with:
           name: wheel
