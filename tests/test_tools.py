@@ -200,10 +200,14 @@ class TestFileWriter:
         assert len(backups) >= 1
 
     def test_blocks_system_directory(self) -> None:
+        import os as _os
         from hatch.tools.file_writer import FileWriter
 
         writer = FileWriter()
-        result = writer.execute({"path": "C:\\Windows\\test.txt", "content": "bad"})
+        system_dir = r"C:\Windows" if _os.name == "nt" else "/etc"
+        result = writer.execute(
+            {"path": _os.path.join(system_dir, "test.txt"), "content": "bad"}
+        )
         assert result.success is False
         assert "拒绝" in result.error or "系统" in result.error
 
